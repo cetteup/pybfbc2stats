@@ -29,6 +29,12 @@ class Client:
         self.track_steps = track_steps
         self.connection = Connection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *excinfo):
+        self.connection.close()
+
     def hello(self) -> bytes:
         if self.track_steps and Step.hello in self.complete_steps:
             return b''
