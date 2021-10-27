@@ -5,7 +5,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
 from .constants import STATS_KEYS, BUFFER_SIZE
-from .exceptions import PyBfbc2ParameterError, PyBfbc2StatsError
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError
 
 
 class Step(int, Enum):
@@ -138,7 +138,7 @@ class Client:
                 error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
                 error_code = error_code_line.split(b'=').pop()
                 if error_code == b'21':
-                    raise PyBfbc2ParameterError('FESL returned invalid parameter error')
+                    raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
                 else:
                     raise PyBfbc2StatsError('FESL returned invalid response')
 
