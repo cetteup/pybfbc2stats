@@ -18,17 +18,19 @@ class Client:
     __username: bytes
     __password: bytes
     __timeout: float
+    __track_steps: bool
     __connection: Connection
     __complete_steps: List[Step] = []
 
-    def __init__(self, username: str, password: str, timeout: float = 2.0):
+    def __init__(self, username: str, password: str, timeout: float = 2.0, track_steps: bool = True):
         self.__username = username.encode('utf8')
         self.__password = password.encode('utf8')
         self.__timeout = timeout
+        self.__track_steps = track_steps
         self.__connection = Connection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
 
     def hello(self) -> bytes:
-        if Step.hello in self.__complete_steps:
+        if self.__track_steps and Step.hello in self.__complete_steps:
             return b''
 
         hello_packet = self.__build_packet(
@@ -41,9 +43,9 @@ class Client:
         return self.__connection.read()
 
     def memcheck(self) -> bytes:
-        if Step.memcheck in self.__complete_steps:
+        if self.__track_steps and Step.memcheck in self.__complete_steps:
             return b''
-        elif Step.hello not in self.__complete_steps:
+        elif self.__track_steps and Step.hello not in self.__complete_steps:
             self.hello()
 
         memcheck_packet = self.__build_packet(
@@ -55,9 +57,9 @@ class Client:
         return self.__connection.read()
 
     def login(self) -> bytes:
-        if Step.login in self.__complete_steps:
+        if self.__track_steps and Step.login in self.__complete_steps:
             return b''
-        elif Step.memcheck not in self.__complete_steps:
+        elif self.__track_steps and Step.memcheck not in self.__complete_steps:
             self.memcheck()
 
         login_packet = self.__build_packet(
@@ -70,7 +72,7 @@ class Client:
         return self.__connection.read()
 
     def lookup_usernames(self, usernames: List[str]) -> List[dict]:
-        if Step.login not in self.__complete_steps:
+        if self.__track_steps and Step.login not in self.__complete_steps:
             self.login()
 
         usernames_bytes = [username.encode('utf8') for username in usernames]
@@ -102,7 +104,7 @@ class Client:
         return results.pop()
 
     def get_stats(self, userid: int) -> dict:
-        if Step.login not in self.__complete_steps:
+        if self.__track_steps and Step.login not in self.__complete_steps:
             self.login()
 
         userid_bytes = str(userid).encode('utf8')
