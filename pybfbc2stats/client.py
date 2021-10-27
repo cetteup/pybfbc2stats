@@ -15,22 +15,22 @@ class Step(int, Enum):
 
 
 class Client:
-    __username: bytes
-    __password: bytes
-    __timeout: float
-    __track_steps: bool
-    __connection: Connection
-    __complete_steps: List[Step] = []
+    username: bytes
+    password: bytes
+    timeout: float
+    track_steps: bool
+    connection: Connection
+    complete_steps: List[Step] = []
 
     def __init__(self, username: str, password: str, timeout: float = 2.0, track_steps: bool = True):
-        self.__username = username.encode('utf8')
-        self.__password = password.encode('utf8')
-        self.__timeout = timeout
-        self.__track_steps = track_steps
-        self.__connection = Connection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
+        self.username = username.encode('utf8')
+        self.password = password.encode('utf8')
+        self.timeout = timeout
+        self.track_steps = track_steps
+        self.connection = Connection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
 
     def hello(self) -> bytes:
-        if self.__track_steps and Step.hello in self.__complete_steps:
+        if self.track_steps and Step.hello in self.complete_steps:
             return b''
 
         hello_packet = self.__build_packet(
@@ -38,41 +38,41 @@ class Client:
             b'TXN=Hello\nclientString=bfbc2-pc\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\n'
             b'SDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\nclientType=server'
         )
-        self.__connection.write(hello_packet)
-        self.__complete_steps.append(Step.hello)
-        return self.__connection.read()
+        self.connection.write(hello_packet)
+        self.complete_steps.append(Step.hello)
+        return self.connection.read()
 
     def memcheck(self) -> bytes:
-        if self.__track_steps and Step.memcheck in self.__complete_steps:
+        if self.track_steps and Step.memcheck in self.complete_steps:
             return b''
-        elif self.__track_steps and Step.hello not in self.__complete_steps:
+        elif self.track_steps and Step.hello not in self.complete_steps:
             self.hello()
 
         memcheck_packet = self.__build_packet(
             b'fsys\x80\x00\x00\x00\x00\x00\x00"',
             b'TXN=MemCheck\nresult='
         )
-        self.__connection.write(memcheck_packet)
-        self.__complete_steps.append(Step.memcheck)
-        return self.__connection.read()
+        self.connection.write(memcheck_packet)
+        self.complete_steps.append(Step.memcheck)
+        return self.connection.read()
 
     def login(self) -> bytes:
-        if self.__track_steps and Step.login in self.__complete_steps:
+        if self.track_steps and Step.login in self.complete_steps:
             return b''
-        elif self.__track_steps and Step.memcheck not in self.__complete_steps:
+        elif self.track_steps and Step.memcheck not in self.complete_steps:
             self.memcheck()
 
         login_packet = self.__build_packet(
             b'acct\xc0\x00\x00\x02\x00\x00\x00s',
             b'TXN=NuLogin\nreturnEncryptedInfo=0\n'
-            b'nuid=' + self.__username + b'\npassword=' + self.__password + b'\nmacAddr=$000000000000'
+            b'nuid=' + self.username + b'\npassword=' + self.password + b'\nmacAddr=$000000000000'
         )
-        self.__connection.write(login_packet)
-        self.__complete_steps.append(Step.login)
-        return self.__connection.read()
+        self.connection.write(login_packet)
+        self.complete_steps.append(Step.login)
+        return self.connection.read()
 
     def lookup_usernames(self, usernames: List[str]) -> List[dict]:
-        if self.__track_steps and Step.login not in self.__complete_steps:
+        if self.track_steps and Step.login not in self.complete_steps:
             self.login()
 
         usernames_bytes = [username.encode('utf8') for username in usernames]
@@ -89,8 +89,8 @@ class Client:
         lookup_bytearray[11] = len(lookup_bytearray) & 255
 
         lookup_packet = bytes(lookup_bytearray)
-        self.__connection.write(lookup_packet)
-        response = self.__connection.read()
+        self.connection.write(lookup_packet)
+        response = self.connection.read()
         body = response[12:-1]
 
         return self.parse_list_response(body, b'userInfo.')
@@ -104,7 +104,7 @@ class Client:
         return results.pop()
 
     def get_stats(self, userid: int) -> dict:
-        if self.__track_steps and Step.login not in self.__complete_steps:
+        if self.track_steps and Step.login not in self.complete_steps:
             self.login()
 
         userid_bytes = str(userid).encode('utf8')
@@ -131,12 +131,12 @@ class Client:
             # "Truncate" length to one byte
             chunk_bytearray[11] = len(chunk_bytearray) & 255
             chunk_packet = bytes(chunk_bytearray)
-            self.__connection.write(chunk_packet)
+            self.connection.write(chunk_packet)
 
         response = b''
         has_more_packets = True
         while has_more_packets:
-            packet = self.__connection.read()
+            packet = self.connection.read()
             body = packet[12:-1]
             lines = body.split(b'\n')
 
