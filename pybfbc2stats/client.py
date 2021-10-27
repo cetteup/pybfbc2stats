@@ -5,7 +5,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
 from .constants import STATS_KEYS, BUFFER_SIZE
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
 class Step(int, Enum):
@@ -94,7 +94,12 @@ class Client:
         return self.parse_list_response(body, b'userInfo.')
 
     def lookup_username(self, username: str) -> dict:
-        return self.lookup_usernames([username]).pop()
+        results = self.lookup_usernames([username])
+
+        if len(results) == 0:
+            raise PyBfbc2StatsNotFoundError('Name lookup did not return any results')
+
+        return results.pop()
 
     def get_stats(self, userid: int) -> dict:
         if Step.login not in self.__complete_steps:
