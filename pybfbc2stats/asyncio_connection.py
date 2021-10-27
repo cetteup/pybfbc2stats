@@ -68,6 +68,9 @@ class AsyncConnection(Connection):
 
         return buffer
 
+    def __del__(self):
+        pass
+
     async def close(self) -> bool:
         if hasattr(self, 'writer') and isinstance(self.writer, asyncio.StreamWriter):
             self.writer.close()
