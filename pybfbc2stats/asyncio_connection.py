@@ -1,7 +1,5 @@
-import functools
-import socket
-import ssl
 import asyncio
+import socket
 
 from . import Connection
 from .constants import BUFFER_SIZE
