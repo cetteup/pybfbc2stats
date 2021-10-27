@@ -97,7 +97,8 @@ class Client:
             if data[-1:] == b'\x00':
                 has_more_packets = False
 
-        return {entry['key']: entry['value'] for entry in self.parse_list_response(response, b'stats.')}
+        parsed = self.parse_list_response(response, b'stats.')
+        return self.dict_list_to_dict(parsed)
 
     @staticmethod
     def build_list_body(items: List[bytes], prefix: bytes, key: bytes = b''):
@@ -233,3 +234,8 @@ class Client:
         data = b64decode(unquote_to_bytes(data_line[5:]))
 
         return data
+
+    @staticmethod
+    def dict_list_to_dict(dict_list: List[dict]) -> dict:
+        sorted_list = sorted(dict_list, key=lambda x: x['key'])
+        return {entry['key']: entry['value'] for entry in sorted_list}
