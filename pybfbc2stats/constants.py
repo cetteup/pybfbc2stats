@@ -1,4 +1,4 @@
-BUFFER_SIZE = 8094
+BUFFER_SIZE = 8144
 STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br40mmsg_01', b'br9a91_00', b'br9a91_01',
               b'braek_00', b'braek_01', b'brair_00', b'brair_01', b'brak47v_00', b'brak47v_01', b'braks74u_00',
               b'braks74u_01', b'bran94_00', b'bran94_01', b'brarm_00', b'brarm_01', b'bratm_00', b'bratm_01',
