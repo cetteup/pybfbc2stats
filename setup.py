@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='pybfbc2stats',
-    version='0.1.1',
+    version='0.1.2',
     description='Simple Python library for retrieving statistics of Battlefield: Bad Company 2 players',
     long_description=long_description,
     long_description_content_type='text/markdown',
