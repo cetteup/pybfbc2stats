@@ -33,7 +33,7 @@ class Client:
         if self.track_steps and Step.hello in self.complete_steps:
             return b''
 
-        hello_packet = self.__build_packet(
+        hello_packet = self.build_packet(
             b'fsys\xc0\x00\x00\x01\x00\x00\x00\xb2',
             b'TXN=Hello\nclientString=bfbc2-pc\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\n'
             b'SDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\nclientType=server'
@@ -48,7 +48,7 @@ class Client:
         elif self.track_steps and Step.hello not in self.complete_steps:
             self.hello()
 
-        memcheck_packet = self.__build_packet(
+        memcheck_packet = self.build_packet(
             b'fsys\x80\x00\x00\x00\x00\x00\x00"',
             b'TXN=MemCheck\nresult='
         )
@@ -62,7 +62,7 @@ class Client:
         elif self.track_steps and Step.memcheck not in self.complete_steps:
             self.memcheck()
 
-        login_packet = self.__build_packet(
+        login_packet = self.build_packet(
             b'acct\xc0\x00\x00\x02\x00\x00\x00s',
             b'TXN=NuLogin\nreturnEncryptedInfo=0\n'
             b'nuid=' + self.username + b'\npassword=' + self.password + b'\nmacAddr=$000000000000'
@@ -76,8 +76,8 @@ class Client:
             self.login()
 
         usernames_bytes = [username.encode('utf8') for username in usernames]
-        lookup_list = self.__build_list_body(usernames_bytes, b'userInfo.', b'.userName')
-        lookup_bytearray = bytearray(self.__build_packet(
+        lookup_list = self.build_list_body(usernames_bytes, b'userInfo.', b'.userName')
+        lookup_bytearray = bytearray(self.build_packet(
             b'acct\xc0\x00\x00\n\x00\x00\x00K',
             b'TXN=NuLookupUserInfo\n' + lookup_list
         ))
@@ -108,7 +108,7 @@ class Client:
             self.login()
 
         userid_bytes = str(userid).encode('utf8')
-        key_list = self.__build_list_body(STATS_KEYS, b'keys.')
+        key_list = self.build_list_body(STATS_KEYS, b'keys.')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
         # Base64 encode query for transfer
         stats_query_b64 = b64encode(stats_query)
@@ -122,7 +122,7 @@ class Client:
         # Send query in chunks
         for i in range(0, len(stats_query_enc), available_packet_length):
             query_chunk = stats_query_enc[i:i + available_packet_length]
-            chunk_bytearray = bytearray(self.__build_packet(
+            chunk_bytearray = bytearray(self.build_packet(
                 b'rank\xf0\x00\x00\x0b\x00\x00\x1f\x9e',
                 b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk
             ))
@@ -159,7 +159,7 @@ class Client:
         return {entry['key']: entry['value'] for entry in self.parse_list_response(response, b'stats.')}
 
     @staticmethod
-    def __build_list_body(items: List[bytes], prefix: bytes, key: bytes = b''):
+    def build_list_body(items: List[bytes], prefix: bytes, key: bytes = b''):
         # Convert item list to bytes following "prefix.index.key=value"-format (userInfo.0.userName=NoobKillah)
         item_list = [prefix + str(index).encode('utf8') + key + b'=' + value for (index, value) in enumerate(items)]
 
@@ -167,7 +167,7 @@ class Client:
         return b'\n'.join(item_list) + b'\n' + prefix + b'[]=' + str(len(items)).encode('utf8')
 
     @staticmethod
-    def __build_packet(header: bytes, body: bytes):
+    def build_packet(header: bytes, body: bytes):
         return header + body + b'\n\x00'
 
     @staticmethod
