@@ -9,7 +9,7 @@ class Connection:
     host: str
     port: int
     protocol: int
-    socket: ssl.SSLSocket
+    ssl_socket: ssl.SSLSocket
     timeout: float
     is_connected: bool = False
 
@@ -23,21 +23,15 @@ class Connection:
             return
 
         # Init raw socket
-        raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw_socket = self.init_socket(self.timeout)
 
         # Init SSL context
-        context = ssl.create_default_context()
-        context.minimum_version = ssl.TLSVersion.TLSv1
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        context.set_ciphers(':HIGH:!DH:!aNULL')
+        context = self.init_ssl_context()
 
-        self.socket = context.wrap_socket(raw_socket)
-
-        self.socket.settimeout(self.timeout)
+        self.ssl_socket = context.wrap_socket(raw_socket)
 
         try:
-            self.socket.connect((self.host, self.port))
+            self.ssl_socket.connect((self.host, self.port))
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
@@ -51,7 +45,7 @@ class Connection:
             self.connect()
 
         try:
-            self.socket.sendall(data)
+            self.ssl_socket.sendall(data)
         except socket.error:
             raise PyBfbc2StatsError('Failed to send data to server')
 
@@ -63,7 +57,7 @@ class Connection:
         receive_next = True
         while receive_next:
             try:
-                iteration_buffer = self.socket.recv(BUFFER_SIZE)
+                iteration_buffer = self.ssl_socket.recv(BUFFER_SIZE)
             except socket.timeout:
                 raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
             except socket.error:
@@ -75,14 +69,31 @@ class Connection:
 
         return buffer
 
+    @staticmethod
+    def init_socket(timeout: float) -> socket.socket:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+
+        return sock
+
+    @staticmethod
+    def init_ssl_context():
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        context.set_ciphers(':HIGH:!DH:!aNULL')
+
+        return context
+
     def __del__(self):
         self.close()
 
     def close(self) -> bool:
-        if hasattr(self, '__socket') and isinstance(self.socket, socket.socket):
+        if hasattr(self, 'ssl_socket') and isinstance(self.ssl_socket, socket.socket):
             if self.is_connected:
-                self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
+                self.ssl_socket.shutdown(socket.SHUT_RDWR)
+            self.ssl_socket.close()
             self.is_connected = False
             return True
 
