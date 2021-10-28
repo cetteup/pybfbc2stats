@@ -146,8 +146,8 @@ class Client:
     def build_login_packet(username: bytes, password: bytes) -> bytes:
         return Client.build_packet(
             b'acct\xc0\x00\x00\x02',
-            b'TXN=NuLogin\nreturnEncryptedInfo=0\n'
-            b'nuid=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
+            b'TXN=Login\nreturnEncryptedInfo=0\n'
+            b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
         )
 
     @staticmethod
