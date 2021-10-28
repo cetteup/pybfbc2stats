@@ -14,5 +14,5 @@ Simple Python library for retrieving statistics of Battlefield: Bad Company 2 pl
 __version__ = '0.1.4'
 __author__ = 'cetteup'
 __credits__ = 'nemo, Luigi Auriemma'
-__all__ = ['Connection', 'Client', 'AsyncConnection', 'AsyncClient', 'PyBfbc2StatsError',
+__all__ = ['Connection', 'Client', 'AsyncConnection', 'AsyncClient', 'PyBfbc2StatsError', 'Namespace',
            'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError', 'PyBfbc2StatsNotFoundError']
