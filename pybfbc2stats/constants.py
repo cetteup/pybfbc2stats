@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class Step(int, Enum):
     hello = 1
     memcheck = 2
@@ -12,7 +13,26 @@ class Namespace(bytes, Enum):
     ps3 = b'ps3'
 
 
+class Platform(int, Enum):
+    pc = 1
+    # XBOX is not yet supported
+    # xbox360 = 2
+    ps3 = 3
+
+
 BUFFER_SIZE = 8144
+FESL_DETAILS = {
+    Platform.pc: {
+        'host': 'bfbc2-pc-server.fesl.ea.com',
+        'port': 18321,
+        'clientString': b'bfbc2-pc'
+    },
+    Platform.ps3: {
+        'host': 'bfbc2-ps3-server.fesl.ea.com',
+        'port': 18331,
+        'clientString': b'bfbc2-ps3'
+    }
+}
 STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br40mmsg_01', b'br9a91_00', b'br9a91_01',
               b'braek_00', b'braek_01', b'brair_00', b'brair_01', b'brak47v_00', b'brak47v_01', b'braks74u_00',
               b'braks74u_01', b'bran94_00', b'bran94_01', b'brarm_00', b'brarm_01', b'bratm_00', b'bratm_01',

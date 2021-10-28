@@ -3,24 +3,27 @@ from typing import List, Union, Dict
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
-from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace
+from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
 class Client:
     username: bytes
     password: bytes
+    platform: Platform
     timeout: float
     track_steps: bool
     connection: Connection
     complete_steps: List[Step] = []
 
-    def __init__(self, username: str, password: str, timeout: float = 2.0, track_steps: bool = True):
+    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
+                 track_steps: bool = True):
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
+        self.platform = platform
         self.timeout = timeout
         self.track_steps = track_steps
-        self.connection = Connection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
+        self.connection = Connection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'], timeout)
 
     def __enter__(self):
         return self
@@ -134,12 +137,12 @@ class Client:
 
         return bytes(packet)
 
-    @staticmethod
-    def get_hello_packet() -> bytes:
+    def get_hello_packet(self) -> bytes:
         return Client.build_packet(
             b'fsys\xc0\x00\x00\x01',
-            b'TXN=Hello\nclientString=bfbc2-pc\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\n'
-            b'SDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\nclientType=server'
+            b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] + b'\nsku=PC\nlocale=en_US\n'
+            b'clientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\n'
+            b'clientType=server'
         )
 
     @staticmethod

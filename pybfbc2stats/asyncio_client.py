@@ -1,17 +1,19 @@
 from typing import List
 
-from . import Client, Namespace
 from .asyncio_connection import AsyncConnection
-from .constants import Step
+from .client import Client
+from .constants import Step, Namespace, FESL_DETAILS, Platform
 from .exceptions import PyBfbc2StatsNotFoundError
 
 
 class AsyncClient(Client):
     connection: AsyncConnection
 
-    def __init__(self, username: str, password: str, timeout: float = 2.0, track_steps: bool = True):
-        super().__init__(username, password, timeout, track_steps)
-        self.connection = AsyncConnection('bfbc2-pc-server.fesl.ea.com', 18321, timeout)
+    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
+                 track_steps: bool = True):
+        super().__init__(username, password, platform, timeout=timeout, track_steps=track_steps)
+        self.connection = AsyncConnection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'],
+                                          timeout)
 
     async def __aenter__(self):
         return self
