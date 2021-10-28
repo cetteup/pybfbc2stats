@@ -116,12 +116,21 @@ class Client:
 
     @staticmethod
     def build_packet(header: bytes, body: bytes):
-        return header + body + b'\n\x00'
+        # Add header, packet length indicators, body and tail together
+        packet = bytearray(header + b'\x00\x00\x00\x00' + body + b'\n\x00')
+
+        # Update length indicators
+        packet[8] = len(packet) >> 24
+        packet[9] = len(packet) >> 16
+        packet[10] = len(packet) >> 8
+        packet[11] = len(packet) & 255
+
+        return bytes(packet)
 
     @staticmethod
     def get_hello_packet() -> bytes:
         return Client.build_packet(
-            b'fsys\xc0\x00\x00\x01\x00\x00\x00\xb2',
+            b'fsys\xc0\x00\x00\x01',
             b'TXN=Hello\nclientString=bfbc2-pc\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\n'
             b'SDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\nclientType=server'
         )
@@ -129,14 +138,14 @@ class Client:
     @staticmethod
     def get_memcheck_packet() -> bytes:
         return Client.build_packet(
-            b'fsys\x80\x00\x00\x00\x00\x00\x00"',
+            b'fsys\x80\x00\x00\x00',
             b'TXN=MemCheck\nresult='
         )
 
     @staticmethod
     def build_login_packet(username: bytes, password: bytes) -> bytes:
         return Client.build_packet(
-            b'acct\xc0\x00\x00\x02\x00\x00\x00s',
+            b'acct\xc0\x00\x00\x02',
             b'TXN=NuLogin\nreturnEncryptedInfo=0\n'
             b'nuid=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
         )
@@ -145,18 +154,12 @@ class Client:
     def build_user_lookup_packet(usernames: List[str]) -> bytes:
         usernames_bytes = [username.encode('utf8') for username in usernames]
         lookup_list = Client.build_list_body(usernames_bytes, b'userInfo.', b'.userName')
-        lookup_bytearray = bytearray(Client.build_packet(
-            b'acct\xc0\x00\x00\n\x00\x00\x00K',
+        lookup_packet = Client.build_packet(
+            b'acct\xc0\x00\x00\n',
             b'TXN=NuLookupUserInfo\n' + lookup_list
-        ))
+        )
 
-        # Shift some bytes
-        lookup_bytearray[8] = len(lookup_bytearray) >> 24
-        lookup_bytearray[9] = len(lookup_bytearray) >> 16
-        lookup_bytearray[10] = len(lookup_bytearray) >> 8
-        lookup_bytearray[11] = len(lookup_bytearray) & 255
-
-        return bytes(lookup_bytearray)
+        return lookup_packet
 
     @staticmethod
     def build_stats_query_packets(userid: int) -> List[bytes]:
@@ -176,15 +179,11 @@ class Client:
         chunk_packets = []
         for i in range(0, len(stats_query_enc), available_packet_length):
             query_chunk = stats_query_enc[i:i + available_packet_length]
-            chunk_bytearray = bytearray(Client.build_packet(
-                b'rank\xf0\x00\x00\x0b\x00\x00\x1f\x9e',
+            chunk_packet = Client.build_packet(
+                b'rank\xf0\x00\x00\x0b',
                 b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk
-            ))
-            # Shift some bytes
-            chunk_bytearray[10] = len(chunk_bytearray) >> 8
-            # "Truncate" length to one byte
-            chunk_bytearray[11] = len(chunk_bytearray) & 255
-            chunk_packets.append(bytes(chunk_bytearray))
+            )
+            chunk_packets.append(chunk_packet)
 
         return chunk_packets
 
