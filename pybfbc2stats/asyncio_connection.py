@@ -1,7 +1,7 @@
 import asyncio
 import socket
 
-from . import Connection
+from .connection import Connection
 from .constants import BUFFER_SIZE
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsError
 

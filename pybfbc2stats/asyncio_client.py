@@ -1,8 +1,8 @@
 from typing import List
 
-from . import Client
+from . import Client, Namespace
 from .asyncio_connection import AsyncConnection
-from .client import Step, Namespace
+from .constants import Step
 from .exceptions import PyBfbc2StatsNotFoundError
 
 

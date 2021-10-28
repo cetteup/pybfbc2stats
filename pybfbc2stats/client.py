@@ -1,23 +1,10 @@
 from base64 import b64encode, b64decode
-from enum import Enum
 from typing import List, Union, Dict
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
-from .constants import STATS_KEYS, BUFFER_SIZE
+from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
-
-
-class Step(int, Enum):
-    hello = 1
-    memcheck = 2
-    login = 3
-
-
-class Namespace(bytes, Enum):
-    pc = b'battlefield'
-    xbox360 = b'xbox'
-    ps3 = b'ps3'
 
 
 class Client:
