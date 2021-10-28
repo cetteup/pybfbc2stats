@@ -13,6 +13,11 @@ class Namespace(bytes, Enum):
     ps3 = b'ps3'
 
 
+class LookupType(bytes, Enum):
+    byName = b'userName'
+    byId = b'userId'
+
+
 class Platform(int, Enum):
     pc = 1
     # XBOX is not yet supported

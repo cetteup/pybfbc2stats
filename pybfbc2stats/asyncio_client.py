@@ -2,7 +2,7 @@ from typing import List
 
 from .asyncio_connection import AsyncConnection
 from .client import Client
-from .constants import Step, Namespace, FESL_DETAILS, Platform
+from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType
 from .exceptions import PyBfbc2StatsNotFoundError
 
 
@@ -53,21 +53,35 @@ class AsyncClient(Client):
         return await self.connection.read()
 
     async def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
+        return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
+
+    async def lookup_username(self, username: str, namespace: Namespace) -> dict:
+        return await self.lookup_user_identifier(username, namespace, LookupType.byName)
+
+    async def lookup_user_ids(self, user_ids: List[int], namespace: Namespace) -> List[dict]:
+        user_ids_str = [str(user_id) for user_id in user_ids]
+        return await self.lookup_user_identifiers(user_ids_str, namespace, LookupType.byId)
+
+    async def lookup_user_id(self, user_id: int, namespace: Namespace) -> dict:
+        return await self.lookup_user_identifier(str(user_id), namespace, LookupType.byId)
+
+    async def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
+                                      lookup_type: LookupType) -> List[dict]:
         if self.track_steps and Step.login not in self.complete_steps:
             await self.login()
 
-        lookup_packet = self.build_user_lookup_packet(usernames, namespace)
+        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
         response = await self.connection.read()
         body = response[12:-1]
 
         return self.parse_list_response(body, b'userInfo.')
 
-    async def lookup_username(self, username: str, namespace: Namespace) -> dict:
-        results = await self.lookup_usernames([username], namespace)
+    async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
+        results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
-            raise PyBfbc2StatsNotFoundError('Name lookup did not return any results')
+            raise PyBfbc2StatsNotFoundError('User lookup did not return any results')
 
         return results.pop()
 

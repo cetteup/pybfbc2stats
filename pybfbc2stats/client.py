@@ -3,7 +3,7 @@ from typing import List, Union, Dict
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
-from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS
+from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
@@ -63,21 +63,35 @@ class Client:
         return self.connection.read()
 
     def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
+        return self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
+
+    def lookup_username(self, username: str, namespace: Namespace) -> dict:
+        return self.lookup_user_identifier(username, namespace, LookupType.byName)
+
+    def lookup_user_ids(self, user_ids: List[int], namespace: Namespace) -> List[dict]:
+        user_ids_str = [str(user_id) for user_id in user_ids]
+        return self.lookup_user_identifiers(user_ids_str, namespace, LookupType.byId)
+
+    def lookup_user_id(self, user_id: int, namespace: Namespace) -> dict:
+        return self.lookup_user_identifier(str(user_id), namespace, LookupType.byId)
+
+    def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
+                                lookup_type: LookupType) -> List[dict]:
         if self.track_steps and Step.login not in self.complete_steps:
             self.login()
 
-        lookup_packet = self.build_user_lookup_packet(usernames, namespace)
+        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
         self.connection.write(lookup_packet)
         response = self.connection.read()
         body = response[12:-1]
 
         return self.parse_list_response(body, b'userInfo.')
 
-    def lookup_username(self, username: str, namespace: Namespace) -> dict:
-        results = self.lookup_usernames([username], namespace)
+    def lookup_user_identifier(self, identifier: str, namespace: Namespace,  lookup_type: LookupType) -> dict:
+        results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
-            raise PyBfbc2StatsNotFoundError('Name lookup did not return any results')
+            raise PyBfbc2StatsNotFoundError('User lookup did not return any results')
 
         return results.pop()
 
@@ -161,8 +175,9 @@ class Client:
         )
 
     @staticmethod
-    def build_user_lookup_packet(usernames: List[str], namespace: Namespace) -> bytes:
-        user_dicts = [{b'userName': username.encode('utf8'), b'namespace': bytes(namespace)} for username in usernames]
+    def build_user_lookup_packet(user_identifiers: List[str], namespace: Namespace, lookup_type: LookupType) -> bytes:
+        user_dicts = [{bytes(lookup_type): identifier.encode('utf8'), b'namespace': bytes(namespace)}
+                      for identifier in user_identifiers]
         lookup_list = Client.build_list_body(user_dicts, b'userInfo')
         lookup_packet = Client.build_packet(
             b'acct\xc0\x00\x00\n',
