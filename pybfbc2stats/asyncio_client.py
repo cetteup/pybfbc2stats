@@ -2,7 +2,7 @@ from typing import List
 
 from . import Client
 from .asyncio_connection import AsyncConnection
-from .client import Step
+from .client import Step, Namespace
 from .exceptions import PyBfbc2StatsNotFoundError
 
 
@@ -50,19 +50,19 @@ class AsyncClient(Client):
         self.complete_steps.append(Step.login)
         return await self.connection.read()
 
-    async def lookup_usernames(self, usernames: List[str]) -> List[dict]:
+    async def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         if self.track_steps and Step.login not in self.complete_steps:
             await self.login()
 
-        lookup_packet = self.build_user_lookup_packet(usernames)
+        lookup_packet = self.build_user_lookup_packet(usernames, namespace)
         await self.connection.write(lookup_packet)
         response = await self.connection.read()
         body = response[12:-1]
 
         return self.parse_list_response(body, b'userInfo.')
 
-    async def lookup_username(self, username: str) -> dict:
-        results = await self.lookup_usernames([username])
+    async def lookup_username(self, username: str, namespace: Namespace) -> dict:
+        results = await self.lookup_usernames([username], namespace)
 
         if len(results) == 0:
             raise PyBfbc2StatsNotFoundError('Name lookup did not return any results')

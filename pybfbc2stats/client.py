@@ -1,6 +1,6 @@
 from base64 import b64encode, b64decode
 from enum import Enum
-from typing import List
+from typing import List, Union, Dict
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
@@ -12,6 +12,12 @@ class Step(int, Enum):
     hello = 1
     memcheck = 2
     login = 3
+
+
+class Namespace(bytes, Enum):
+    pc = b'battlefield'
+    xbox360 = b'xbox'
+    ps3 = b'ps3'
 
 
 class Client:
@@ -66,19 +72,19 @@ class Client:
         self.complete_steps.append(Step.login)
         return self.connection.read()
 
-    def lookup_usernames(self, usernames: List[str]) -> List[dict]:
+    def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         if self.track_steps and Step.login not in self.complete_steps:
             self.login()
 
-        lookup_packet = self.build_user_lookup_packet(usernames)
+        lookup_packet = self.build_user_lookup_packet(usernames, namespace)
         self.connection.write(lookup_packet)
         response = self.connection.read()
         body = response[12:-1]
 
         return self.parse_list_response(body, b'userInfo.')
 
-    def lookup_username(self, username: str) -> dict:
-        results = self.lookup_usernames([username])
+    def lookup_username(self, username: str, namespace: Namespace) -> dict:
+        results = self.lookup_usernames([username], namespace)
 
         if len(results) == 0:
             raise PyBfbc2StatsNotFoundError('Name lookup did not return any results')
@@ -107,12 +113,26 @@ class Client:
         return self.dict_list_to_dict(parsed)
 
     @staticmethod
-    def build_list_body(items: List[bytes], prefix: bytes, key: bytes = b''):
-        # Convert item list to bytes following "prefix.index.key=value"-format (userInfo.0.userName=NoobKillah)
-        item_list = [prefix + str(index).encode('utf8') + key + b'=' + value for (index, value) in enumerate(items)]
+    def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes):
+        # Convert item list to bytes following "prefix.index.key=value"-format
+        item_list = []
+        for index, item in enumerate(items):
+            if isinstance(item, dict):
+                for key, value in item.items():
+                    dotted_elements = [prefix, str(index).encode('utf8'), key]
+                    # byte dict with prefix: userInfo.0.userName=NoobKillah
+                    item_list.append(Client.build_list_item(dotted_elements, value))
+            else:
+                # bytes with prefix only: keys.0=accuracy
+                dotted_elements = [prefix, str(index).encode('utf8')]
+                item_list.append(Client.build_list_item(dotted_elements, item))
 
         # Join list together, add list length indicator and return
-        return b'\n'.join(item_list) + b'\n' + prefix + b'[]=' + str(len(items)).encode('utf8')
+        return b'\n'.join(item_list) + b'\n' + prefix + b'.[]=' + str(len(items)).encode('utf8')
+
+    @staticmethod
+    def build_list_item(dotted_elements: List[bytes], value: bytes) -> bytes:
+        return b'.'.join(dotted_elements) + b'=' + value
 
     @staticmethod
     def build_packet(header: bytes, body: bytes):
@@ -151,9 +171,9 @@ class Client:
         )
 
     @staticmethod
-    def build_user_lookup_packet(usernames: List[str]) -> bytes:
-        usernames_bytes = [username.encode('utf8') for username in usernames]
-        lookup_list = Client.build_list_body(usernames_bytes, b'userInfo.', b'.userName')
+    def build_user_lookup_packet(usernames: List[str], namespace: Namespace) -> bytes:
+        user_dicts = [{b'userName': username.encode('utf8'), b'namespace': bytes(namespace)} for username in usernames]
+        lookup_list = Client.build_list_body(user_dicts, b'userInfo')
         lookup_packet = Client.build_packet(
             b'acct\xc0\x00\x00\n',
             b'TXN=NuLookupUserInfo\n' + lookup_list
@@ -164,7 +184,7 @@ class Client:
     @staticmethod
     def build_stats_query_packets(userid: int) -> List[bytes]:
         userid_bytes = str(userid).encode('utf8')
-        key_list = Client.build_list_body(STATS_KEYS, b'keys.')
+        key_list = Client.build_list_body(STATS_KEYS, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
         # Base64 encode query for transfer
         stats_query_b64 = b64encode(stats_query)
