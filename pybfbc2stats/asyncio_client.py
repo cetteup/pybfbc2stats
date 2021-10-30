@@ -94,14 +94,15 @@ class AsyncClient(Client):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        response = b''
-        has_more_packets = True
-        while has_more_packets:
-            packet = await self.connection.read()
-            data = self.handle_stats_response_packet(packet)
-            response += data
-            if data[-1:] == b'\x00':
-                has_more_packets = False
+        parsed_response = await self.get_stats_response(b'stats.')
+        return self.dict_list_to_dict(parsed_response)
 
-        parsed = self.parse_list_response(response, b'stats.')
-        return self.dict_list_to_dict(parsed)
+    async def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+        response = b''
+        last_packet = False
+        while not last_packet:
+            packet = await self.connection.read()
+            data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+            response += data
+
+        return self.parse_list_response(response, list_parse_prefix)

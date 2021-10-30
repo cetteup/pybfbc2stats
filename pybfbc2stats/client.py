@@ -1,5 +1,5 @@
 from base64 import b64encode, b64decode
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Tuple
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
@@ -104,18 +104,18 @@ class Client:
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        response = b''
-        has_more_packets = True
-        while has_more_packets:
-            packet = self.connection.read()
-            data = self.handle_stats_response_packet(packet)
-            response += data
-            if data[-1:] == b'\x00':
-                has_more_packets = False
+        parsed_response = self.get_stats_response(b'stats.')
+        return self.dict_list_to_dict(parsed_response)
 
-        # Remove trailing \x00 from response and parse it
-        parsed = self.parse_list_response(response[:-1], b'stats.')
-        return self.dict_list_to_dict(parsed)
+    def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+        response = b''
+        last_packet = False
+        while not last_packet:
+            packet = self.connection.read()
+            data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+            response += data
+
+        return self.parse_list_response(response, list_parse_prefix)
 
     @staticmethod
     def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes):
@@ -259,24 +259,37 @@ class Client:
         return datasets
 
     @staticmethod
-    def handle_stats_response_packet(packet: bytes):
+    def handle_stats_response_packet(packet: bytes, length_indicator: bytes) -> Tuple[bytes, bool]:
         body = packet[12:-1]
         lines = body.split(b'\n')
 
         # Check for errors
-        if b'data=' not in body:
+        if b'errorCode' in body:
             error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
             error_code = error_code_line.split(b'=').pop()
             if error_code == b'21':
                 raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
             else:
-                raise PyBfbc2StatsError('FESL returned invalid response')
+                raise PyBfbc2StatsError(f'FESL returned an error (code {error_code.decode("utf")})')
+        elif b'data=' not in body and length_indicator not in body:
+            # Packet is neither one data packet of a multi-packet response nor a single-packet response
+            raise PyBfbc2StatsError('FESL returned invalid response')
 
-        data_line = next(line for line in lines if line.startswith(b'data='))
-        # URL decode/unquote and base64 decode data
-        data = b64decode(unquote_to_bytes(data_line[5:]))
+        if b'data=' in body:
+            # Packet is one of multiple => base64 decode content
+            data_line = next(line for line in lines if line.startswith(b'data='))
+            # URL decode/unquote and base64 decode data
+            data = b64decode(unquote_to_bytes(data_line[5:]))
+            last_packet = data[-1:] == b'\x00'
+            # Remove "eof" indicator from last packet's data
+            if last_packet:
+                data = data[:-1]
+        else:
+            # Single packet response => return body as is
+            data = body
+            last_packet = True
 
-        return data
+        return data, last_packet
 
     @staticmethod
     def dict_list_to_dict(dict_list: List[dict]) -> dict:
