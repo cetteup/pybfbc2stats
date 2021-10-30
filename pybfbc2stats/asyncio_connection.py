@@ -2,7 +2,7 @@ import asyncio
 import socket
 
 from .connection import Connection
-from .constants import DEFAULT_BUFFER_SIZE
+from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsError
 
 
@@ -46,25 +46,31 @@ class AsyncConnection(Connection):
         except socket.error:
             raise PyBfbc2StatsError('Failed to send data to server')
 
-    async def read(self, buffer_size: int = DEFAULT_BUFFER_SIZE) -> bytes:
+    async def read(self) -> bytes:
         if not self.is_connected:
             await self.connect()
 
-        buffer = b''
+        # Read header only first
+        header = b''
+        while len(header) < HEADER_LENGTH:
+            header += await self.reader.read(HEADER_LENGTH - len(header))
+
+        # Read remaining data as body until "eof" indicator (\x00)
+        body = b''
         receive_next = True
         while receive_next:
             try:
-                iteration_buffer = await self.reader.read(buffer_size - len(buffer))
+                iteration_buffer = await self.reader.readuntil(b'\x00')
             except socket.timeout:
                 raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
             except socket.error:
                 raise PyBfbc2StatsError('Failed to receive data from server')
 
-            buffer += iteration_buffer
+            body += iteration_buffer
 
-            receive_next = len(buffer) < buffer_size and (len(buffer) == 0 or buffer[-1] != 0)
+            receive_next = len(body) == 0 or body[-1] != 0
 
-        return buffer
+        return header + body
 
     def __del__(self):
         pass

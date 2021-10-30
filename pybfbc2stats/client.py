@@ -4,7 +4,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
-    STATS_BUFFER_SIZE, DEFAULT_LEADERBOARD_KEYS, LEADERBOARD_BUFFER_SIZE
+    DEFAULT_LEADERBOARD_KEYS
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
@@ -105,7 +105,7 @@ class Client:
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        parsed_response = self.get_stats_response(STATS_BUFFER_SIZE, b'stats.')
+        parsed_response = self.get_stats_response(b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -116,16 +116,16 @@ class Client:
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        parsed_response = self.get_stats_response(LEADERBOARD_BUFFER_SIZE, b'stats.')
+        parsed_response = self.get_stats_response(b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    def get_stats_response(self, buffer_size: int, list_parse_prefix: bytes) -> List[dict]:
+    def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = self.connection.read(buffer_size)
+            packet = self.connection.read()
             data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
             response += data
 

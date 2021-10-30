@@ -26,8 +26,7 @@ class Platform(int, Enum):
 
 
 DEFAULT_BUFFER_SIZE = 8096
-STATS_BUFFER_SIZE = 8144
-LEADERBOARD_BUFFER_SIZE = 8143
+HEADER_LENGTH = 12
 FESL_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',
