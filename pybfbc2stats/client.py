@@ -220,7 +220,7 @@ class Client:
         meta_lines = []
         data_lines = []
         for line in lines:
-            if line.startswith(entry_prefix) and b'.[]' not in line:
+            if line.startswith(entry_prefix) and entry_prefix + b'[]' not in line:
                 # Append data line (without entry prefix)
                 # So for userInfo.0.userId=226804555, only add 0.userId=226804555 (assuming prefix is userInfo.)
                 data_lines.append(line[len(entry_prefix):])
@@ -233,7 +233,9 @@ class Client:
         entry_count = int(length_info.split(b'=').pop())
         # Init dict list
         datasets = [{} for i in range(0, entry_count)]
-        for line in data_lines:
+        # Sort reverse to get sub-list length indicators first
+        # (99.addStats.[]=10 will be sorted before 99.addStats.9.value=777.678)
+        for line in sorted(data_lines, reverse=True):
             # Split into keys and data and split into index and key
             # line format will something like: 0.userId=22680455
             elements = line.split(b'=')
@@ -241,8 +243,18 @@ class Client:
             index = int(key_elements[0])
             key = key_elements[1].decode()
             value = elements[1].decode()
-            # Add value to dict
-            datasets[index][key] = value
+            # Add sub-list (99.addStats.9.value=777.678) or simple scalar value (99.value=8.367105024E9)
+            if len(key_elements) >= 3 and b'.[]=' in line:
+                # If line contains a sub-list length indicator, init sub list of given length
+                datasets[index][key] = [{} for i in range(0, int(value))]
+            elif len(key_elements) >= 4:
+                # Line contains sub-list data => append to list at index and key
+                sub_index = int(key_elements[2])
+                sub_key = key_elements[3].decode()
+                datasets[index][key][sub_index][sub_key] = value
+            else:
+                # Add scaler value to dict
+                datasets[index][key] = value
 
         return datasets
 
