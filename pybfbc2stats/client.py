@@ -3,7 +3,8 @@ from typing import List, Union, Dict, Tuple
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
-from .constants import STATS_KEYS, BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType
+from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
+    STATS_BUFFER_SIZE
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
@@ -104,14 +105,14 @@ class Client:
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        parsed_response = self.get_stats_response(b'stats.')
+        parsed_response = self.get_stats_response(STATS_BUFFER_SIZE, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
-    def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+    def get_stats_response(self, buffer_size: int, list_parse_prefix: bytes) -> List[dict]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = self.connection.read()
+            packet = self.connection.read(buffer_size)
             data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
             response += data
 
@@ -196,7 +197,7 @@ class Client:
         stats_query_b64 = b64encode(stats_query)
         # Determine available packet length (subtract already used by query metadata and size indicator)
         encoded_query_size = str(len(stats_query_b64))
-        available_packet_length = BUFFER_SIZE - (25 + len(encoded_query_size))
+        available_packet_length = DEFAULT_BUFFER_SIZE - (25 + len(encoded_query_size))
 
         # URL encode/quote query
         stats_query_enc = quote_from_bytes(stats_query_b64).encode('utf8')

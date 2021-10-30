@@ -2,7 +2,7 @@ import asyncio
 import socket
 
 from .connection import Connection
-from .constants import BUFFER_SIZE
+from .constants import DEFAULT_BUFFER_SIZE
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsError
 
 
@@ -46,7 +46,7 @@ class AsyncConnection(Connection):
         except socket.error:
             raise PyBfbc2StatsError('Failed to send data to server')
 
-    async def read(self) -> bytes:
+    async def read(self, buffer_size: int = DEFAULT_BUFFER_SIZE) -> bytes:
         if not self.is_connected:
             await self.connect()
 
@@ -54,7 +54,7 @@ class AsyncConnection(Connection):
         receive_next = True
         while receive_next:
             try:
-                iteration_buffer = await self.reader.read(BUFFER_SIZE - len(buffer))
+                iteration_buffer = await self.reader.read(buffer_size - len(buffer))
             except socket.timeout:
                 raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
             except socket.error:
@@ -62,7 +62,7 @@ class AsyncConnection(Connection):
 
             buffer += iteration_buffer
 
-            receive_next = len(buffer) < BUFFER_SIZE and (len(buffer) == 0 or buffer[-1] != 0)
+            receive_next = len(buffer) < buffer_size and (len(buffer) == 0 or buffer[-1] != 0)
 
         return buffer
 

@@ -25,7 +25,8 @@ class Platform(int, Enum):
     ps3 = 3
 
 
-BUFFER_SIZE = 8144
+DEFAULT_BUFFER_SIZE = 8096
+STATS_BUFFER_SIZE = 8144
 FESL_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',

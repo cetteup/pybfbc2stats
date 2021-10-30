@@ -2,7 +2,8 @@ from typing import List
 
 from .asyncio_connection import AsyncConnection
 from .client import Client
-from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType
+from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_BUFFER_SIZE, \
+    LEADERBOARD_BUFFER_SIZE
 from .exceptions import PyBfbc2StatsNotFoundError
 
 
@@ -94,14 +95,14 @@ class AsyncClient(Client):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        parsed_response = await self.get_stats_response(b'stats.')
+        parsed_response = await self.get_stats_response(STATS_BUFFER_SIZE, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
-    async def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+    async def get_stats_response(self, buffer_size: int, list_parse_prefix: bytes) -> List[dict]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = await self.connection.read()
+            packet = await self.connection.read(buffer_size)
             data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
             response += data
 
