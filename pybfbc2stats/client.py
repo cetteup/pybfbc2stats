@@ -4,7 +4,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
-    STATS_BUFFER_SIZE
+    STATS_BUFFER_SIZE, DEFAULT_LEADERBOARD_KEYS, LEADERBOARD_BUFFER_SIZE
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 
 
@@ -108,6 +108,19 @@ class Client:
         parsed_response = self.get_stats_response(STATS_BUFFER_SIZE, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
+    def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
+                        keys: List[bytes] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
+        if self.track_steps and Step.login not in self.complete_steps:
+            self.login()
+
+        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        self.connection.write(leaderboard_packet)
+
+        parsed_response = self.get_stats_response(LEADERBOARD_BUFFER_SIZE, b'stats.')
+        # Turn sub lists into dicts and return result
+        return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+                 for (key, value) in persona.items()} for persona in parsed_response]
+
     def get_stats_response(self, buffer_size: int, list_parse_prefix: bytes) -> List[dict]:
         response = b''
         last_packet = False
@@ -187,6 +200,17 @@ class Client:
         )
 
         return lookup_packet
+
+    @staticmethod
+    def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> bytes:
+        key_list = Client.build_list_body(keys, b'keys')
+        leaderboard_packet = Client.build_packet(
+            b'rank\xc0\x00\x00\x00',
+            b'TXN=GetTopNAndStats\nkey=' + sort_by + b'\nownerType=1\nminRank=' + str(min_rank).encode('utf8') +
+            b'\nmaxRank=' + str(max_rank).encode('utf8') + b'\nperiodId=0\nperiodPast=0\nrankOrder=0\n' + key_list
+        )
+
+        return leaderboard_packet
 
     @staticmethod
     def build_stats_query_packets(userid: int) -> List[bytes]:

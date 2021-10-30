@@ -98,6 +98,19 @@ class AsyncClient(Client):
         parsed_response = await self.get_stats_response(STATS_BUFFER_SIZE, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
+    async def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
+                              keys: List[bytes] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
+        if self.track_steps and Step.login not in self.complete_steps:
+            await self.login()
+
+        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        await self.connection.write(leaderboard_packet)
+
+        parsed_response = await self.get_stats_response(LEADERBOARD_BUFFER_SIZE, b'stats.')
+        # Turn sub lists into dicts and return result
+        return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+                 for (key, value) in persona.items()} for persona in parsed_response]
+
     async def get_stats_response(self, buffer_size: int, list_parse_prefix: bytes) -> List[dict]:
         response = b''
         last_packet = False

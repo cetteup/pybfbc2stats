@@ -27,6 +27,7 @@ class Platform(int, Enum):
 
 DEFAULT_BUFFER_SIZE = 8096
 STATS_BUFFER_SIZE = 8144
+LEADERBOARD_BUFFER_SIZE = 8143
 FESL_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',
@@ -39,6 +40,7 @@ FESL_DETAILS = {
         'clientString': b'bfbc2-ps3'
     }
 }
+DEFAULT_LEADERBOARD_KEYS = [b'deaths', b'kills', b'score', b'time']
 STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br40mmsg_01', b'br9a91_00', b'br9a91_01',
               b'braek_00', b'braek_01', b'brair_00', b'brair_01', b'brak47v_00', b'brak47v_01', b'braks74u_00',
               b'braks74u_01', b'bran94_00', b'bran94_01', b'brarm_00', b'brarm_01', b'bratm_00', b'bratm_01',
