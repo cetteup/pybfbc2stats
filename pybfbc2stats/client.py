@@ -113,7 +113,8 @@ class Client:
             if data[-1:] == b'\x00':
                 has_more_packets = False
 
-        parsed = self.parse_list_response(response, b'stats.')
+        # Remove trailing \x00 from response and parse it
+        parsed = self.parse_list_response(response[:-1], b'stats.')
         return self.dict_list_to_dict(parsed)
 
     @staticmethod
