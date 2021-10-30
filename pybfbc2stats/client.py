@@ -96,12 +96,12 @@ class Client:
 
         return results.pop()
 
-    def get_stats(self, userid: int) -> dict:
+    def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and Step.login not in self.complete_steps:
             self.login()
 
         # Send query in chunks
-        chunk_packets = self.build_stats_query_packets(userid)
+        chunk_packets = self.build_stats_query_packets(userid, keys)
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
@@ -213,9 +213,9 @@ class Client:
         return leaderboard_packet
 
     @staticmethod
-    def build_stats_query_packets(userid: int) -> List[bytes]:
+    def build_stats_query_packets(userid: int, keys: List[bytes]) -> List[bytes]:
         userid_bytes = str(userid).encode('utf8')
-        key_list = Client.build_list_body(STATS_KEYS, b'keys')
+        key_list = Client.build_list_body(keys, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
         # Base64 encode query for transfer
         stats_query_b64 = b64encode(stats_query)

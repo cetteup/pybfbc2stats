@@ -3,7 +3,7 @@ from typing import List
 from .asyncio_connection import AsyncConnection
 from .client import Client
 from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_BUFFER_SIZE, \
-    LEADERBOARD_BUFFER_SIZE
+    LEADERBOARD_BUFFER_SIZE, STATS_KEYS
 from .exceptions import PyBfbc2StatsNotFoundError
 
 
@@ -86,12 +86,12 @@ class AsyncClient(Client):
 
         return results.pop()
 
-    async def get_stats(self, userid: int) -> dict:
+    async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and Step.login not in self.complete_steps:
             await self.login()
 
         # Send query in chunks
-        chunk_packets = self.build_stats_query_packets(userid)
+        chunk_packets = self.build_stats_query_packets(userid, keys)
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
