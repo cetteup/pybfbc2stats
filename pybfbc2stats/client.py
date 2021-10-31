@@ -15,7 +15,7 @@ class Client:
     timeout: float
     track_steps: bool
     connection: Connection
-    complete_steps: List[Step] = []
+    complete_steps: Dict[Step, bytes] = {}
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
                  track_steps: bool = True):
@@ -35,34 +35,39 @@ class Client:
 
     def hello(self) -> bytes:
         if self.track_steps and Step.hello in self.complete_steps:
-            return b''
+            return self.complete_steps[Step.hello]
 
         hello_packet = self.get_hello_packet()
         self.connection.write(hello_packet)
-        self.complete_steps.append(Step.hello)
-        return self.connection.read()
 
-    def memcheck(self) -> bytes:
-        if self.track_steps and Step.memcheck in self.complete_steps:
-            return b''
-        elif self.track_steps and Step.hello not in self.complete_steps:
-            self.hello()
+        # FESL sends hello response immediately followed initial memcheck => read both and return hello response
+        response = self.connection.read()
+        _ = self.connection.read()
 
+        self.complete_steps[Step.hello] = response
+
+        # Reply to initial memcheck
+        self.memcheck()
+
+        return response
+
+    def memcheck(self) -> None:
         memcheck_packet = self.get_memcheck_packet()
         self.connection.write(memcheck_packet)
-        self.complete_steps.append(Step.memcheck)
-        return self.connection.read()
 
     def login(self) -> bytes:
         if self.track_steps and Step.login in self.complete_steps:
-            return b''
-        elif self.track_steps and Step.memcheck not in self.complete_steps:
-            self.memcheck()
+            return self.complete_steps[Step.login]
+        elif self.track_steps and Step.hello not in self.complete_steps:
+            self.hello()
 
         login_packet = self.build_login_packet(self.username, self.password)
         self.connection.write(login_packet)
-        self.complete_steps.append(Step.login)
-        return self.connection.read()
+        response = self.connection.read()
+
+        self.complete_steps[Step.login] = response
+
+        return response
 
     def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()

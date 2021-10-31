@@ -3,8 +3,7 @@ from enum import Enum
 
 class Step(int, Enum):
     hello = 1
-    memcheck = 2
-    login = 3
+    login = 2
 
 
 class Namespace(bytes, Enum):

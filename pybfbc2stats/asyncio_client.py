@@ -24,34 +24,39 @@ class AsyncClient(Client):
 
     async def hello(self) -> bytes:
         if self.track_steps and Step.hello in self.complete_steps:
-            return b''
+            return self.complete_steps[Step.hello]
 
         hello_packet = self.get_hello_packet()
         await self.connection.write(hello_packet)
-        self.complete_steps.append(Step.hello)
-        return await self.connection.read()
 
-    async def memcheck(self) -> bytes:
-        if self.track_steps and Step.memcheck in self.complete_steps:
-            return b''
-        elif self.track_steps and Step.hello not in self.complete_steps:
-            await self.hello()
+        # FESL sends hello response immediately followed initial memcheck => read both and return hello response
+        response = await self.connection.read()
+        _ = await self.connection.read()
 
+        self.complete_steps[Step.hello] = hello_packet
+
+        # Reply to initial memcheck
+        await self.memcheck()
+
+        return response
+
+    async def memcheck(self) -> None:
         memcheck_packet = self.get_memcheck_packet()
         await self.connection.write(memcheck_packet)
-        self.complete_steps.append(Step.memcheck)
-        return await self.connection.read()
 
     async def login(self) -> bytes:
         if self.track_steps and Step.login in self.complete_steps:
-            return b''
-        elif self.track_steps and Step.memcheck not in self.complete_steps:
-            await self.memcheck()
+            return self.complete_steps[Step.login]
+        elif self.track_steps and Step.hello not in self.complete_steps:
+            await self.hello()
 
         login_packet = self.build_login_packet(self.username, self.password)
         await self.connection.write(login_packet)
-        self.complete_steps.append(Step.login)
-        return await self.connection.read()
+        response = await self.connection.read()
+
+        self.complete_steps[Step.login] = response
+
+        return response
 
     async def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()
