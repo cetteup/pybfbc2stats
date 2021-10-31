@@ -72,10 +72,8 @@ class AsyncClient(Client):
 
         lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
-        response = await self.connection.read()
-        body = response[12:-1]
 
-        parsed_response, *_ = self.parse_list_response(body, b'userInfo.')
+        parsed_response, *_ = await self.get_list_response(b'userInfo.')
         return parsed_response
 
     async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
