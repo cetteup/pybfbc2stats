@@ -5,7 +5,8 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 from .connection import Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, PyBfbc2SearchError
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, PyBfbc2SearchError, \
+    PyBfbc2StatsLoginError
 
 
 class Client:
@@ -64,6 +65,10 @@ class Client:
         login_packet = self.build_login_packet(self.username, self.password)
         self.connection.write(login_packet)
         response = self.connection.read()
+
+        response_valid, error_message = self.is_valid_login_response(response)
+        if not response_valid:
+            raise PyBfbc2StatsLoginError(error_message)
 
         self.complete_steps[Step.login] = response
 
@@ -272,6 +277,18 @@ class Client:
             chunk_packets.append(chunk_packet)
 
         return chunk_packets
+
+    @staticmethod
+    def is_valid_login_response(response: bytes) -> Tuple[bool, str]:
+        valid = b'lkey=' in response
+        if not valid:
+            lines = response[12:-1].split(b'\n')
+            message = next((line[18:-1] for line in lines if line.startswith(b'localizedMessage=')), b'').decode('utf8')
+        else:
+            message = ''
+
+        return valid, message
+
 
     @staticmethod
     def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:

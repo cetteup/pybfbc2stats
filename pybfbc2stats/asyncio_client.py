@@ -3,7 +3,7 @@ from typing import List, Tuple
 from .asyncio_connection import AsyncConnection
 from .client import Client
 from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
-from .exceptions import PyBfbc2StatsNotFoundError
+from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
 
 
 class AsyncClient(Client):
@@ -53,6 +53,10 @@ class AsyncClient(Client):
         login_packet = self.build_login_packet(self.username, self.password)
         await self.connection.write(login_packet)
         response = await self.connection.read()
+
+        response_valid, error_message = self.is_valid_login_response(response)
+        if not response_valid:
+            raise PyBfbc2StatsLoginError(error_message)
 
         self.complete_steps[Step.login] = response
 
