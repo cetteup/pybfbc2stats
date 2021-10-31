@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from .asyncio_connection import AsyncConnection
 from .client import Client
@@ -75,7 +75,8 @@ class AsyncClient(Client):
         response = await self.connection.read()
         body = response[12:-1]
 
-        return self.parse_list_response(body, b'userInfo.')
+        parsed_response, *_ = self.parse_list_response(body, b'userInfo.')
+        return parsed_response
 
     async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
         results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
@@ -94,7 +95,7 @@ class AsyncClient(Client):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        parsed_response = await self.get_stats_response(b'stats.')
+        parsed_response, *_ = await self.get_list_response(b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     async def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -105,12 +106,12 @@ class AsyncClient(Client):
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
-        parsed_response = await self.get_stats_response(b'stats.')
+        parsed_response, *_ = await self.get_list_response(b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    async def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+    async def get_list_response(self, list_parse_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:

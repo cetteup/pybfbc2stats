@@ -86,7 +86,8 @@ class Client:
         response = self.connection.read()
         body = response[12:-1]
 
-        return self.parse_list_response(body, b'userInfo.')
+        parsed_response, *_ = self.parse_list_response(body, b'userInfo.')
+        return parsed_response
 
     def lookup_user_identifier(self, identifier: str, namespace: Namespace,  lookup_type: LookupType) -> dict:
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
@@ -105,7 +106,7 @@ class Client:
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        parsed_response = self.get_stats_response(b'stats.')
+        parsed_response, *_ = self.get_list_response(b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -116,12 +117,12 @@ class Client:
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        parsed_response = self.get_stats_response(b'stats.')
+        parsed_response, *_ = self.get_list_response(b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    def get_stats_response(self, list_parse_prefix: bytes) -> List[dict]:
+    def get_list_response(self, list_parse_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
@@ -202,6 +203,13 @@ class Client:
         return lookup_packet
 
     @staticmethod
+    def build_search_packet(screen_name: str) -> bytes:
+        return Client.build_packet(
+            b'acct\xc0\x00\x00\x1c',
+            b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0'
+        )
+
+    @staticmethod
     def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> bytes:
         key_list = Client.build_list_body(keys, b'keys')
         leaderboard_packet = Client.build_packet(
@@ -239,7 +247,7 @@ class Client:
         return chunk_packets
 
     @staticmethod
-    def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> List[dict]:
+    def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         lines = raw_response.split(b'\n')
         # Assign lines to either data or meta lines
         meta_lines = []
@@ -281,7 +289,7 @@ class Client:
                 # Add scaler value to dict
                 datasets[index][key] = value
 
-        return datasets
+        return datasets, meta_lines
 
     @staticmethod
     def handle_stats_response_packet(packet: bytes, length_indicator: bytes) -> Tuple[bytes, bool]:
