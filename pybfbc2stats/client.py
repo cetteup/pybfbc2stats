@@ -5,7 +5,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 from .connection import Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, PyBfbc2SearchError
 
 
 class Client:
@@ -94,6 +94,16 @@ class Client:
             raise PyBfbc2StatsNotFoundError('User lookup did not return any results')
 
         return results.pop()
+
+    def search_name(self, screen_name: str) -> dict:
+        if self.track_steps and Step.login not in self.complete_steps:
+            self.login()
+
+        search_packet = self.build_search_packet(screen_name)
+        self.connection.write(search_packet)
+
+        parsed_response, metadata = self.get_list_response(b'users.')
+        return self.format_search_response(parsed_response, metadata)
 
     def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and Step.login not in self.complete_steps:
@@ -296,10 +306,15 @@ class Client:
 
         # Check for errors
         if b'errorCode' in body:
+            method_line = next((line for line in lines if line.startswith(b'TXN')), b'')
+            method = method_line.split(b'=').pop()
             error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
             error_code = error_code_line.split(b'=').pop()
             if error_code == b'21':
                 raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
+            elif error_code == b'104' and method == b'NuSearchOwners':
+                # Error code is returned if a) no results matched the query or b) too many results matched the query
+                raise PyBfbc2SearchError('FESL found no or too many results matching the search query')
             else:
                 raise PyBfbc2StatsError(f'FESL returned an error (code {error_code.decode("utf")})')
         elif b'data=' not in body and length_indicator not in body:
@@ -326,3 +341,13 @@ class Client:
     def dict_list_to_dict(dict_list: List[dict]) -> dict:
         sorted_list = sorted(dict_list, key=lambda x: x['key'])
         return {entry['key']: entry['value'] for entry in sorted_list}
+
+    @staticmethod
+    def format_search_response(parsed_response: List[dict], metadata: List[bytes]) -> dict:
+        namespace_line = next(line for line in metadata if line.startswith(b'nameSpaceId'))
+        namespace = namespace_line.split(b'=').pop()
+
+        return {
+            'namespace': namespace.decode('utf8'),
+            'users': parsed_response
+        }

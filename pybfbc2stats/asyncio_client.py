@@ -84,6 +84,16 @@ class AsyncClient(Client):
 
         return results.pop()
 
+    async def search_name(self, screen_name: str) -> dict:
+        if self.track_steps and Step.login not in self.complete_steps:
+            await self.login()
+
+        search_packet = self.build_search_packet(screen_name)
+        await self.connection.write(search_packet)
+
+        parsed_response, metadata = await self.get_list_response(b'users.')
+        return self.format_search_response(parsed_response, metadata)
+
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and Step.login not in self.complete_steps:
             await self.login()
