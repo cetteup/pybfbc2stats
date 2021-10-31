@@ -53,12 +53,7 @@ from pybfbc2stats import AsyncClient, Platform, Namespace
 
 
 async def main():
-    async with AsyncClient('ea_account_name', 'ea_account_password', Platform.pc) as client:
-        # Manually run setup steps due to issues with async python "reusing" old client instances
-        await client.hello()
-        await client.memcheck()
-        await client.login()
-        
+    async with AsyncClient('ea_account_name', 'ea_account_password', Platform.pc) as client:       
         quoted_name = quote('Krut0r')
         persona = await client.lookup_username(quoted_name, Namespace.pc)
         stats = await client.get_stats(int(persona['userId']))
