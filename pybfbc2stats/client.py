@@ -30,6 +30,7 @@ class Client:
         return self
 
     def __exit__(self, *excinfo):
+        self.logout()
         self.connection.close()
 
     def hello(self) -> bytes:
@@ -61,6 +62,12 @@ class Client:
         login_packet = self.build_login_packet(self.username, self.password)
         self.connection.write(login_packet)
         self.complete_steps.append(Step.login)
+        return self.connection.read()
+
+    def logout(self) -> bytes:
+        logout_packet = self.build_logout_packet()
+        self.connection.write(logout_packet)
+        self.complete_steps.clear()
         return self.connection.read()
 
     def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
@@ -196,6 +203,13 @@ class Client:
             b'acct\xc0\x00\x00\x02',
             b'TXN=Login\nreturnEncryptedInfo=0\n'
             b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
+        )
+
+    @staticmethod
+    def build_logout_packet() -> bytes:
+        return Client.build_packet(
+            b'fsys\xc0\x00\x00\x03',
+            b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"'
         )
 
     @staticmethod

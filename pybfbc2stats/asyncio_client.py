@@ -19,6 +19,7 @@ class AsyncClient(Client):
         return self
 
     async def __aexit__(self, *excinfo):
+        await self.logout()
         await self.connection.close()
 
     async def hello(self) -> bytes:
@@ -50,6 +51,12 @@ class AsyncClient(Client):
         login_packet = self.build_login_packet(self.username, self.password)
         await self.connection.write(login_packet)
         self.complete_steps.append(Step.login)
+        return await self.connection.read()
+
+    async def logout(self) -> bytes:
+        logout_packet = self.build_logout_packet()
+        await self.connection.write(logout_packet)
+        self.complete_steps.clear()
         return await self.connection.read()
 
     async def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
