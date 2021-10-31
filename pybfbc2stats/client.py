@@ -80,6 +80,10 @@ class Client:
         self.complete_steps.clear()
         return self.connection.read()
 
+    def ping(self) -> None:
+        ping_packet = self.build_ping_packet()
+        self.connection.write(ping_packet)
+
     def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         return self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
 
@@ -152,8 +156,15 @@ class Client:
         last_packet = False
         while not last_packet:
             packet = self.connection.read()
-            data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
-            response += data
+            if b'TXN=MemCheck' in packet:
+                # Respond to memcheck
+                self.memcheck()
+            elif b'TXN=Ping' in packet:
+                # Respond to ping
+                self.ping()
+            else:
+                data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+                response += data
 
         return self.parse_list_response(response, list_parse_prefix)
 
@@ -220,6 +231,13 @@ class Client:
         return Client.build_packet(
             b'fsys\xc0\x00\x00\x03',
             b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"'
+        )
+
+    @staticmethod
+    def build_ping_packet() -> bytes:
+        return Client.build_packet(
+            b'fsys\x80\x00\x00\x00',
+            b'TXN=Ping'
         )
 
     @staticmethod

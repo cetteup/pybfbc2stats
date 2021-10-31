@@ -68,6 +68,10 @@ class AsyncClient(Client):
         self.complete_steps.clear()
         return await self.connection.read()
 
+    async def ping(self) -> None:
+        ping_packet = self.build_ping_packet()
+        await self.connection.write(ping_packet)
+
     async def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
 
@@ -140,7 +144,14 @@ class AsyncClient(Client):
         last_packet = False
         while not last_packet:
             packet = await self.connection.read()
-            data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
-            response += data
+            if b'TXN=MemCheck' in packet:
+                # Respond to memcheck
+                await self.memcheck()
+            elif b'TXN=Ping' in packet:
+                # Respond to ping
+                await self.ping()
+            else:
+                data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+                response += data
 
         return self.parse_list_response(response, list_parse_prefix)
