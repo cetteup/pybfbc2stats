@@ -90,7 +90,7 @@ STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br4
               b'c_an94__sw_g', b'c_as__da_g', b'c_atm__kw_g', b'c_atm__sfw_g', b'c_atm__shw_g', b'c_atm__sw_g',
               b'c_aug__kw_g', b'c_aug__sfw_g', b'c_aug__shw_g', b'c_aug__sw_g', b'c_bmd3__ddw_g', b'c_bmd3__si_g',
               b'c_bmda__ddw_g', b'c_bmda__si_g', b'c_boaw__kw_g', b'c_br40mmgl_40mmgl__kw_g',
-              b'c_br40mmsg_40mmsg__kw_g',b'c_br9a91_9a91__kw_g', b'c_braek_aek__kw_g', b'c_brair__air_ki_g',
+              b'c_br40mmsg_40mmsg__kw_g', b'c_br9a91_9a91__kw_g', b'c_braek_aek__kw_g', b'c_brair__air_ki_g',
               b'c_brak47v_ak47v__kw_g', b'c_braks74u_aks74u__kw_g', b'c_bran94_an94__kw_g', b'c_brarm__arm_ki_g',
               b'c_bratm_atm__kw_g', b'c_braug_aug__kw_g', b'c_brc4_c4__kw_g', b'c_brf2000_f2000__kw_g',
               b'c_brg3_g3__kw_g', b'c_brgol_gol__kw_g', b'c_brhgr_hgr__kw_g', b'c_brm136_m136__kw_g',

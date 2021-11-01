@@ -109,7 +109,7 @@ class Client:
         parsed_response, *_ = self.get_list_response(b'userInfo.')
         return parsed_response
 
-    def lookup_user_identifier(self, identifier: str, namespace: Namespace,  lookup_type: LookupType) -> dict:
+    def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
@@ -207,9 +207,9 @@ class Client:
     def build_hello_packet(self) -> bytes:
         return Client.build_packet(
             b'fsys\xc0\x00\x00\x01',
-            b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] + b'\nsku=PC\nlocale=en_US\n'
-            b'clientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\nfragmentSize=8096\n'
-            b'clientType=server'
+            b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] +
+            b'\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\n'
+            b'fragmentSize=8096\nclientType=server'
         )
 
     @staticmethod
@@ -308,7 +308,6 @@ class Client:
 
         return valid, message
 
-
     @staticmethod
     def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         lines = raw_response.split(b'\n')
@@ -328,7 +327,7 @@ class Client:
         length_info = next(line for line in meta_lines if b'.[]' in line)
         entry_count = int(length_info.split(b'=').pop())
         # Init dict list
-        datasets = [{} for i in range(0, entry_count)]
+        datasets = [{} for _ in range(0, entry_count)]
         # Sort reverse to get sub-list length indicators first
         # (99.addStats.[]=10 will be sorted before 99.addStats.9.value=777.678)
         for line in sorted(data_lines, reverse=True):
@@ -342,7 +341,7 @@ class Client:
             # Add sub-list (99.addStats.9.value=777.678) or simple scalar value (99.value=8.367105024E9)
             if len(key_elements) >= 3 and b'.[]=' in line:
                 # If line contains a sub-list length indicator, init sub list of given length
-                datasets[index][key] = [{} for i in range(0, int(value))]
+                datasets[index][key] = [{} for _ in range(0, int(value))]
             elif len(key_elements) >= 4:
                 # Line contains sub-list data => append to list at index and key
                 sub_index = int(key_elements[2])
