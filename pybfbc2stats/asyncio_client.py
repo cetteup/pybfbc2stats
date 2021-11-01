@@ -41,7 +41,7 @@ class AsyncClient(Client):
         return response
 
     async def memcheck(self) -> None:
-        memcheck_packet = self.get_memcheck_packet()
+        memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
 
     async def login(self) -> bytes:

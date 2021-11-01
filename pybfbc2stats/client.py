@@ -54,7 +54,7 @@ class Client:
         return response
 
     def memcheck(self) -> None:
-        memcheck_packet = self.get_memcheck_packet()
+        memcheck_packet = self.build_memcheck_packet()
         self.connection.write(memcheck_packet)
 
     def login(self) -> bytes:
@@ -213,7 +213,7 @@ class Client:
         )
 
     @staticmethod
-    def get_memcheck_packet() -> bytes:
+    def build_memcheck_packet() -> bytes:
         return Client.build_packet(
             b'fsys\x80\x00\x00\x00',
             b'TXN=MemCheck\nresult='
