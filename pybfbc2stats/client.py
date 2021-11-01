@@ -170,7 +170,7 @@ class Client:
         return self.parse_list_response(response, list_parse_prefix)
 
     @staticmethod
-    def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes):
+    def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes) -> bytes:
         # Convert item list to bytes following "prefix.index.key=value"-format
         item_list = []
         for index, item in enumerate(items):
@@ -192,7 +192,7 @@ class Client:
         return b'.'.join(dotted_elements) + b'=' + value
 
     @staticmethod
-    def build_packet(header: bytes, body: bytes):
+    def build_packet(header: bytes, body: bytes) -> bytes:
         # Add header, packet length indicators, body and tail together
         packet = bytearray(header + b'\x00\x00\x00\x00' + body + b'\n\x00')
 
