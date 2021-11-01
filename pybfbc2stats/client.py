@@ -39,7 +39,7 @@ class Client:
         if self.track_steps and Step.hello in self.completed_steps:
             return self.completed_steps[Step.hello]
 
-        hello_packet = self.get_hello_packet()
+        hello_packet = self.build_hello_packet()
         self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -204,7 +204,7 @@ class Client:
 
         return bytes(packet)
 
-    def get_hello_packet(self) -> bytes:
+    def build_hello_packet(self) -> bytes:
         return Client.build_packet(
             b'fsys\xc0\x00\x00\x01',
             b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] + b'\nsku=PC\nlocale=en_US\n'

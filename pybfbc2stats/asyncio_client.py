@@ -26,7 +26,7 @@ class AsyncClient(Client):
         if self.track_steps and Step.hello in self.completed_steps:
             return self.completed_steps[Step.hello]
 
-        hello_packet = self.get_hello_packet()
+        hello_packet = self.build_hello_packet()
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
