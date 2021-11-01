@@ -16,7 +16,7 @@ class Client:
     timeout: float
     track_steps: bool
     connection: Connection
-    complete_steps: Dict[Step, bytes] = {}
+    completed_steps: Dict[Step, bytes]
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
                  track_steps: bool = True):
@@ -26,6 +26,7 @@ class Client:
         self.timeout = timeout
         self.track_steps = track_steps
         self.connection = Connection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'], timeout)
+        self.completed_steps = {}
 
     def __enter__(self):
         return self
@@ -35,8 +36,8 @@ class Client:
         self.connection.close()
 
     def hello(self) -> bytes:
-        if self.track_steps and Step.hello in self.complete_steps:
-            return self.complete_steps[Step.hello]
+        if self.track_steps and Step.hello in self.completed_steps:
+            return self.completed_steps[Step.hello]
 
         hello_packet = self.get_hello_packet()
         self.connection.write(hello_packet)
@@ -45,7 +46,7 @@ class Client:
         response = self.connection.read()
         _ = self.connection.read()
 
-        self.complete_steps[Step.hello] = response
+        self.completed_steps[Step.hello] = response
 
         # Reply to initial memcheck
         self.memcheck()
@@ -57,9 +58,9 @@ class Client:
         self.connection.write(memcheck_packet)
 
     def login(self) -> bytes:
-        if self.track_steps and Step.login in self.complete_steps:
-            return self.complete_steps[Step.login]
-        elif self.track_steps and Step.hello not in self.complete_steps:
+        if self.track_steps and Step.login in self.completed_steps:
+            return self.completed_steps[Step.login]
+        elif self.track_steps and Step.hello not in self.completed_steps:
             self.hello()
 
         login_packet = self.build_login_packet(self.username, self.password)
@@ -70,14 +71,14 @@ class Client:
         if not response_valid:
             raise PyBfbc2StatsLoginError(error_message)
 
-        self.complete_steps[Step.login] = response
+        self.completed_steps[Step.login] = response
 
         return response
 
     def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()
         self.connection.write(logout_packet)
-        self.complete_steps.clear()
+        self.completed_steps.clear()
         return self.connection.read()
 
     def ping(self) -> None:
@@ -99,7 +100,7 @@ class Client:
 
     def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
                                 lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 
         lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
@@ -117,7 +118,7 @@ class Client:
         return results.pop()
 
     def search_name(self, screen_name: str) -> dict:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 
         search_packet = self.build_search_packet(screen_name)
@@ -127,7 +128,7 @@ class Client:
         return self.format_search_response(parsed_response, metadata)
 
     def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 
         # Send query in chunks
@@ -140,7 +141,7 @@ class Client:
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
                         keys: List[bytes] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)

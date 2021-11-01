@@ -23,8 +23,8 @@ class AsyncClient(Client):
         await self.connection.close()
 
     async def hello(self) -> bytes:
-        if self.track_steps and Step.hello in self.complete_steps:
-            return self.complete_steps[Step.hello]
+        if self.track_steps and Step.hello in self.completed_steps:
+            return self.completed_steps[Step.hello]
 
         hello_packet = self.get_hello_packet()
         await self.connection.write(hello_packet)
@@ -33,7 +33,7 @@ class AsyncClient(Client):
         response = await self.connection.read()
         _ = await self.connection.read()
 
-        self.complete_steps[Step.hello] = hello_packet
+        self.completed_steps[Step.hello] = hello_packet
 
         # Reply to initial memcheck
         await self.memcheck()
@@ -45,9 +45,9 @@ class AsyncClient(Client):
         await self.connection.write(memcheck_packet)
 
     async def login(self) -> bytes:
-        if self.track_steps and Step.login in self.complete_steps:
-            return self.complete_steps[Step.login]
-        elif self.track_steps and Step.hello not in self.complete_steps:
+        if self.track_steps and Step.login in self.completed_steps:
+            return self.completed_steps[Step.login]
+        elif self.track_steps and Step.hello not in self.completed_steps:
             await self.hello()
 
         login_packet = self.build_login_packet(self.username, self.password)
@@ -58,14 +58,14 @@ class AsyncClient(Client):
         if not response_valid:
             raise PyBfbc2StatsLoginError(error_message)
 
-        self.complete_steps[Step.login] = response
+        self.completed_steps[Step.login] = response
 
         return response
 
     async def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()
         await self.connection.write(logout_packet)
-        self.complete_steps.clear()
+        self.completed_steps.clear()
         return await self.connection.read()
 
     async def ping(self) -> None:
@@ -87,7 +87,7 @@ class AsyncClient(Client):
 
     async def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
                                       lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
         lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
@@ -105,7 +105,7 @@ class AsyncClient(Client):
         return results.pop()
 
     async def search_name(self, screen_name: str) -> dict:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
         search_packet = self.build_search_packet(screen_name)
@@ -115,7 +115,7 @@ class AsyncClient(Client):
         return self.format_search_response(parsed_response, metadata)
 
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
         # Send query in chunks
@@ -128,7 +128,7 @@ class AsyncClient(Client):
 
     async def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
                               keys: List[bytes] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and Step.login not in self.complete_steps:
+        if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
