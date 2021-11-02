@@ -366,6 +366,8 @@ class Client:
             error_code = error_code_line.split(b'=').pop()
             if error_code == b'21':
                 raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
+            elif error_code == b'101' and method == b'NuLookupUserInfo':
+                raise PyBfbc2StatsNotFoundError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
                 raise PyBfbc2SearchError('FESL found no or too many results matching the search query')
