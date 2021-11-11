@@ -117,11 +117,11 @@ class Client:
 
         return results.pop()
 
-    def search_name(self, screen_name: str) -> dict:
+    def search_name(self, screen_name: str, namespace: Namespace) -> dict:
         if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 
-        search_packet = self.build_search_packet(screen_name)
+        search_packet = self.build_search_packet(screen_name, namespace)
         self.connection.write(search_packet)
 
         parsed_response, metadata = self.get_list_response(b'users.')
@@ -254,10 +254,11 @@ class Client:
         return lookup_packet
 
     @staticmethod
-    def build_search_packet(screen_name: str) -> bytes:
+    def build_search_packet(screen_name: str, namespace: Namespace) -> bytes:
         return Client.build_packet(
             b'acct\xc0\x00\x00\x1c',
-            b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0'
+            b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0\n'
+            b'nameSpaceId=' + bytes(namespace)
         )
 
     @staticmethod
