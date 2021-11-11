@@ -5,8 +5,8 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 from .connection import Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, PyBfbc2SearchError, \
-    PyBfbc2StatsLoginError
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
+    PyBfbc2StatsSearchError, PyBfbc2StatsLoginError
 
 
 class Client:
@@ -370,7 +370,7 @@ class Client:
                 raise PyBfbc2StatsNotFoundError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
-                raise PyBfbc2SearchError('FESL found no or too many results matching the search query')
+                raise PyBfbc2StatsSearchError('FESL found no or too many results matching the search query')
             else:
                 raise PyBfbc2StatsError(f'FESL returned an error (code {error_code.decode("utf")})')
         elif b'data=' not in body and length_indicator not in body:

@@ -22,5 +22,5 @@ class PyBfbc2StatsNotFoundError(PyBfbc2StatsError):
     pass
 
 
-class PyBfbc2SearchError(PyBfbc2StatsError):
+class PyBfbc2StatsSearchError(PyBfbc2StatsError):
     pass
