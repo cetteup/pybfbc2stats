@@ -10,6 +10,7 @@ class Namespace(bytes, Enum):
     pc = b'battlefield'
     xbox360 = b'xbox'
     ps3 = b'ps3'
+    cem_ea_id = b'cem_ea_id'
 
 
 class LookupType(bytes, Enum):
