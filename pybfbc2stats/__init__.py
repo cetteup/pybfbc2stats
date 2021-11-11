@@ -4,7 +4,7 @@ from .client import Client
 from .connection import Connection
 from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import PyBfbc2StatsError, PyBfbc2StatsTimeoutError, PyBfbc2StatsParameterError, \
-    PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
+    PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError, PyBfbc2StatsConnectionError, PyBfbc2StatsSearchError
 
 """
 pybfbc2stats.
@@ -16,5 +16,5 @@ __author__ = 'cetteup'
 __credits__ = 'nemo, Luigi Auriemma'
 __all__ = ['Connection', 'Client', 'AsyncConnection', 'AsyncClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS',
-           'PyBfbc2StatsError', 'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError', 'PyBfbc2StatsLoginError',
-           'PyBfbc2StatsNotFoundError']
+           'PyBfbc2StatsError', 'PyBfbc2StatsConnectionError', 'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError',
+           'PyBfbc2StatsLoginError', 'PyBfbc2StatsNotFoundError', 'PyBfbc2StatsSearchError']
