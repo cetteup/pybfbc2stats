@@ -5,7 +5,7 @@ Simple Python 🐍 library for retrieving statistics of Battlefield: Bad Company
 ## Features
 
 - lookup players/personas by id or name on any platform
-- search for players/personas by name on PC/PS3 (with wildcard support)
+- search for players/personas by name on any platform (with wildcard support)
 - retrieve all available statistics for players on PC/PS3
 - retrieve player leaderboards on PC/PS3
 - full support for async Python
