@@ -25,7 +25,7 @@ $ pip install pybfbc2stats
 The FESL backend only supports TSL 1.0. So, you can only use this library in an environment that allows Python to use TLS 1.0. The easiest and least intrusive way to enable TLS 1.0 support is to set an `OPENSSL_CONF` environment variable that contains the absolute path to the included `openssl.cnf`. On Linux, you can set it by running this in the project directory:
 
 ```bash
-`export OPENSSL_CONF=$(realpath openssl.cnf)`
+export OPENSSL_CONF=$(realpath openssl.cnf)
 ```
 ### Basic example
 
