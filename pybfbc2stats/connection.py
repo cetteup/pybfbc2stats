@@ -56,24 +56,28 @@ class Connection:
         # Read header only first
         header = b''
         while len(header) < HEADER_LENGTH:
-            header += self.ssl_socket.recv(HEADER_LENGTH - len(header))
+            header += self.read_safe(HEADER_LENGTH - len(header))
 
         # Read remaining data as body until "eof" indicator (\x00)
         body = b''
         receive_next = True
         while receive_next:
-            try:
-                iteration_buffer = self.ssl_socket.recv(1)
-            except socket.timeout:
-                raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
-            except socket.error:
-                raise PyBfbc2StatsConnectionError('Failed to receive data from server')
-
+            iteration_buffer = self.read_safe(1)
             body += iteration_buffer
 
             receive_next = len(body) == 0 or body[-1] != 0
 
         return header + body
+
+    def read_safe(self, buflen: int) -> bytes:
+        try:
+            buffer = self.ssl_socket.recv(buflen)
+        except socket.timeout:
+            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
+        except socket.error:
+            raise PyBfbc2StatsConnectionError('Failed to receive data from server')
+
+        return buffer
 
     @staticmethod
     def init_socket(timeout: float) -> socket.socket:

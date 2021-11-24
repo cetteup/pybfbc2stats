@@ -53,24 +53,38 @@ class AsyncConnection(Connection):
         # Read header only first
         header = b''
         while len(header) < HEADER_LENGTH:
-            header += await self.reader.read(HEADER_LENGTH - len(header))
+            header += await self.read_safe(HEADER_LENGTH - len(header))
 
         # Read remaining data as body until "eof" indicator (\x00)
         body = b''
         receive_next = True
         while receive_next:
-            try:
-                iteration_buffer = await self.reader.readuntil(b'\x00')
-            except socket.timeout:
-                raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
-            except socket.error:
-                raise PyBfbc2StatsConnectionError('Failed to receive data from server')
-
+            iteration_buffer = await self.read_safe_until(b'\x00')
             body += iteration_buffer
 
             receive_next = len(body) == 0 or body[-1] != 0
 
         return header + body
+
+    async def read_safe(self, buflen: int) -> bytes:
+        try:
+            buffer = await self.reader.read(buflen)
+        except socket.timeout:
+            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
+        except socket.error:
+            raise PyBfbc2StatsConnectionError('Failed to receive data from server')
+
+        return buffer
+
+    async def read_safe_until(self, separator: bytes) -> bytes:
+        try:
+            buffer = await self.reader.readuntil(separator)
+        except socket.timeout:
+            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
+        except socket.error:
+            raise PyBfbc2StatsConnectionError('Failed to receive data from server')
+
+        return buffer
 
     def __del__(self):
         pass
