@@ -1,3 +1,4 @@
+import logging
 import socket
 import ssl
 
@@ -41,7 +42,9 @@ class Connection:
             raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     def write(self, data: bytes) -> None:
+        logging.debug('Writing to socket')
         if not self.is_connected:
+            logging.debug('Socket is not connected yet, connecting now')
             self.connect()
 
         try:
@@ -49,16 +52,25 @@ class Connection:
         except socket.error:
             raise PyBfbc2StatsConnectionError('Failed to send data to server')
 
+        logging.debug(data)
+
     def read(self) -> bytes:
+        logging.debug('Reading from socket')
         if not self.is_connected:
+            logging.debug('Socket is not connected yet, connecting now')
             self.connect()
 
         # Read header only first
+        logging.debug('Reading packet header')
         header = b''
         while len(header) < HEADER_LENGTH:
-            header += self.read_safe(HEADER_LENGTH - len(header))
+            iteration_buffer = self.read_safe(HEADER_LENGTH - len(header))
+            header += iteration_buffer
+
+        logging.debug(header)
 
         # Read remaining data as body until "eof" indicator (\x00)
+        logging.debug('Reading packet body')
         body = b''
         receive_next = True
         while receive_next:
@@ -66,6 +78,8 @@ class Connection:
             body += iteration_buffer
 
             receive_next = len(body) == 0 or body[-1] != 0
+
+        logging.debug(body)
 
         return header + body
 
