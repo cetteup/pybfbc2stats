@@ -87,7 +87,7 @@ Create a new [Async]Client instance.
 `username`     | str  | Required
 `password`     | str  | Required
 `platform`     | Platform | Required | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)
-`timeout`      | float   | Optional  | How long to wait for data before raising a timeout exception
+`timeout`      | float   | Optional  | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend)
 
 ----
 
