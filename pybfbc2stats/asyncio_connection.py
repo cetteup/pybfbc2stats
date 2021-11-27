@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import socket
+import time
 
 from .connection import Connection
 from .constants import HEADER_LENGTH
@@ -60,22 +61,36 @@ class AsyncConnection(Connection):
         # Read header only first
         logging.debug('Reading packet header')
         header = b''
-        while len(header) < HEADER_LENGTH:
-            header += await self.read_safe(HEADER_LENGTH - len(header))
+        start = time.time()
+        timed_out = False
+        while len(header) < HEADER_LENGTH and not timed_out:
+            iteration_buffer = await self.read_safe(HEADER_LENGTH - len(header))
+            header += iteration_buffer
+
+            timed_out = time.time() > start + self.timeout
 
         logging.debug(header)
+
+        if timed_out:
+            raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
 
         # Read remaining data as body until "eof" indicator (\x00)
         logging.debug('Reading packet body')
         body = b''
         receive_next = True
-        while receive_next:
+        start = time.time()
+        timed_out = False
+        while receive_next and not timed_out:
             iteration_buffer = await self.read_safe_until(b'\x00')
             body += iteration_buffer
 
             receive_next = len(body) == 0 or body[-1] != 0
+            timed_out = time.time() > start + self.timeout
 
         logging.debug(body)
+
+        if timed_out:
+            raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
 
         return header + body
 

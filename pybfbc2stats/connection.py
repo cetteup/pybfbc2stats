@@ -1,6 +1,7 @@
 import logging
 import socket
 import ssl
+import time
 
 from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
@@ -63,9 +64,16 @@ class Connection:
         # Read header only first
         logging.debug('Reading packet header')
         header = b''
-        while len(header) < HEADER_LENGTH:
+        start = time.time()
+        timed_out = False
+        while len(header) < HEADER_LENGTH and not timed_out:
             iteration_buffer = self.read_safe(HEADER_LENGTH - len(header))
             header += iteration_buffer
+
+            timed_out = time.time() > start + self.timeout
+
+        if timed_out:
+            raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
 
         logging.debug(header)
 
@@ -73,13 +81,19 @@ class Connection:
         logging.debug('Reading packet body')
         body = b''
         receive_next = True
-        while receive_next:
+        start = time.time()
+        timed_out = False
+        while receive_next and not timed_out:
             iteration_buffer = self.read_safe(1)
             body += iteration_buffer
 
             receive_next = len(body) == 0 or body[-1] != 0
+            timed_out = time.time() > start + self.timeout
 
         logging.debug(body)
+
+        if timed_out:
+            raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
 
         return header + body
 
