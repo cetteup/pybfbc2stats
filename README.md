@@ -217,9 +217,9 @@ persona = client.lookup_user_id(232302860, Namespace.xbox360)
 
 ----
 
-#### \[Async\]Client.search_name(screen_name)
+#### \[Async\]Client.search_name(screen_name, namespace)
 
-Find personas given a **url encoded/quoted** (partial) name on the client instance's platform. You can use `*` as a trailing wildcard.
+Find personas given a **url encoded/quoted** (partial) name. You can use `*` as a trailing wildcard.
 
 **Note**: The FESL backend returns an error both if a) no matching results were found and b) too many matching results were found. So, be careful with wildcard characters in combination with short partial names.
 
@@ -228,6 +228,7 @@ Find personas given a **url encoded/quoted** (partial) name on the client instan
   Argument     | Type | Opt/Required | Note
 ---------------|------|--------------|-----
 `screen_name`     | str  | Required | **Url encoded/quoted** (partial) name
+`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
 
 **Example**
 
