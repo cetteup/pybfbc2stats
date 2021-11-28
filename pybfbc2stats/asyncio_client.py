@@ -9,7 +9,7 @@ from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
 class AsyncClient(Client):
     connection: AsyncConnection
 
-    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
+    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         super().__init__(username, password, platform, timeout=timeout, track_steps=track_steps)
         self.connection = AsyncConnection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'],

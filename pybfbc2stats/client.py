@@ -18,7 +18,7 @@ class Client:
     connection: Connection
     completed_steps: Dict[Step, bytes]
 
-    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 2.0,
+    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
