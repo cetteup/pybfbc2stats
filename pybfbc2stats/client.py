@@ -7,6 +7,7 @@ from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platfor
     DEFAULT_LEADERBOARD_KEYS
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
     PyBfbc2StatsSearchError, PyBfbc2StatsLoginError
+from .packet import Packet
 
 
 class Client:
@@ -16,7 +17,7 @@ class Client:
     timeout: float
     track_steps: bool
     connection: Connection
-    completed_steps: Dict[Step, bytes]
+    completed_steps: Dict[Step, Packet]
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
@@ -39,7 +40,7 @@ class Client:
 
     def hello(self) -> bytes:
         if self.track_steps and Step.hello in self.completed_steps:
-            return self.completed_steps[Step.hello]
+            return bytes(self.completed_steps[Step.hello])
 
         hello_packet = self.build_hello_packet()
         self.connection.write(hello_packet)
@@ -53,7 +54,7 @@ class Client:
         # Reply to initial memcheck
         self.memcheck()
 
-        return response
+        return bytes(response)
 
     def memcheck(self) -> None:
         memcheck_packet = self.build_memcheck_packet()
@@ -61,7 +62,7 @@ class Client:
 
     def login(self) -> bytes:
         if self.track_steps and Step.login in self.completed_steps:
-            return self.completed_steps[Step.login]
+            return bytes(self.completed_steps[Step.login])
         elif self.track_steps and Step.hello not in self.completed_steps:
             self.hello()
 
@@ -75,13 +76,13 @@ class Client:
 
         self.completed_steps[Step.login] = response
 
-        return response
+        return bytes(response)
 
     def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()
         self.connection.write(logout_packet)
         self.completed_steps.clear()
-        return self.connection.read()
+        return bytes(self.connection.read())
 
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -154,22 +155,22 @@ class Client:
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    def get_list_response(self, list_parse_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
             packet = self.connection.read()
-            if b'TXN=MemCheck' in packet:
+            if b'TXN=MemCheck' in packet.body:
                 # Respond to memcheck
                 self.memcheck()
-            elif b'TXN=Ping' in packet:
+            elif b'TXN=Ping' in packet.body:
                 # Respond to ping
                 self.ping()
             else:
-                data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+                data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
                 response += data
 
-        return self.parse_list_response(response, list_parse_prefix)
+        return self.parse_list_response(response, list_entry_prefix)
 
     @staticmethod
     def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes) -> bytes:
@@ -193,21 +194,8 @@ class Client:
     def build_list_item(dotted_elements: List[bytes], value: bytes) -> bytes:
         return b'.'.join(dotted_elements) + b'=' + value
 
-    @staticmethod
-    def build_packet(header: bytes, body: bytes) -> bytes:
-        # Add header, packet length indicators, body and tail together
-        packet = bytearray(header + b'\x00\x00\x00\x00' + body + b'\n\x00')
-
-        # Update length indicators
-        packet[8] = len(packet) >> 24
-        packet[9] = len(packet) >> 16
-        packet[10] = len(packet) >> 8
-        packet[11] = len(packet) & 255
-
-        return bytes(packet)
-
-    def build_hello_packet(self) -> bytes:
-        return Client.build_packet(
+    def build_hello_packet(self) -> Packet:
+        return Packet.build(
             b'fsys\xc0\x00\x00\x01',
             b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] +
             b'\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\n'
@@ -215,40 +203,40 @@ class Client:
         )
 
     @staticmethod
-    def build_memcheck_packet() -> bytes:
-        return Client.build_packet(
+    def build_memcheck_packet() -> Packet:
+        return Packet.build(
             b'fsys\x80\x00\x00\x00',
             b'TXN=MemCheck\nresult='
         )
 
     @staticmethod
-    def build_login_packet(username: bytes, password: bytes) -> bytes:
-        return Client.build_packet(
+    def build_login_packet(username: bytes, password: bytes) -> Packet:
+        return Packet.build(
             b'acct\xc0\x00\x00\x02',
             b'TXN=Login\nreturnEncryptedInfo=0\n'
             b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
         )
 
     @staticmethod
-    def build_logout_packet() -> bytes:
-        return Client.build_packet(
+    def build_logout_packet() -> Packet:
+        return Packet.build(
             b'fsys\xc0\x00\x00\x03',
             b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"'
         )
 
     @staticmethod
-    def build_ping_packet() -> bytes:
-        return Client.build_packet(
+    def build_ping_packet() -> Packet:
+        return Packet.build(
             b'fsys\x80\x00\x00\x00',
             b'TXN=Ping'
         )
 
     @staticmethod
-    def build_user_lookup_packet(user_identifiers: List[str], namespace: Namespace, lookup_type: LookupType) -> bytes:
+    def build_user_lookup_packet(user_identifiers: List[str], namespace: Namespace, lookup_type: LookupType) -> Packet:
         user_dicts = [{bytes(lookup_type): identifier.encode('utf8'), b'namespace': bytes(namespace)}
                       for identifier in user_identifiers]
         lookup_list = Client.build_list_body(user_dicts, b'userInfo')
-        lookup_packet = Client.build_packet(
+        lookup_packet = Packet.build(
             b'acct\xc0\x00\x00\n',
             b'TXN=NuLookupUserInfo\n' + lookup_list
         )
@@ -256,17 +244,17 @@ class Client:
         return lookup_packet
 
     @staticmethod
-    def build_search_packet(screen_name: str, namespace: Namespace) -> bytes:
-        return Client.build_packet(
+    def build_search_packet(screen_name: str, namespace: Namespace) -> Packet:
+        return Packet.build(
             b'acct\xc0\x00\x00\x1c',
             b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0\n'
             b'nameSpaceId=' + bytes(namespace)
         )
 
     @staticmethod
-    def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> bytes:
+    def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> Packet:
         key_list = Client.build_list_body(keys, b'keys')
-        leaderboard_packet = Client.build_packet(
+        leaderboard_packet = Packet.build(
             b'rank\xc0\x00\x00\x00',
             b'TXN=GetTopNAndStats\nkey=' + sort_by + b'\nownerType=1\nminRank=' + str(min_rank).encode('utf8') +
             b'\nmaxRank=' + str(max_rank).encode('utf8') + b'\nperiodId=0\nperiodPast=0\nrankOrder=0\n' + key_list
@@ -275,7 +263,7 @@ class Client:
         return leaderboard_packet
 
     @staticmethod
-    def build_stats_query_packets(userid: int, keys: List[bytes]) -> List[bytes]:
+    def build_stats_query_packets(userid: int, keys: List[bytes]) -> List[Packet]:
         userid_bytes = str(userid).encode('utf8')
         key_list = Client.build_list_body(keys, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
@@ -292,7 +280,7 @@ class Client:
         chunk_packets = []
         for i in range(0, len(stats_query_enc), available_packet_length):
             query_chunk = stats_query_enc[i:i + available_packet_length]
-            chunk_packet = Client.build_packet(
+            chunk_packet = Packet.build(
                 b'rank\xf0\x00\x00\x0b',
                 b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk
             )
@@ -301,8 +289,8 @@ class Client:
         return chunk_packets
 
     @staticmethod
-    def is_valid_login_response(response: bytes) -> Tuple[bool, str]:
-        valid = b'lkey=' in response
+    def is_valid_login_response(response: Packet) -> Tuple[bool, str]:
+        valid = b'lkey=' in response.body
         if not valid:
             lines = response[12:-1].split(b'\n')
             message = next((line[18:-1] for line in lines if line.startswith(b'localizedMessage=')), b'').decode('utf8')
@@ -312,16 +300,16 @@ class Client:
         return valid, message
 
     @staticmethod
-    def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    def parse_list_response(raw_response: bytes, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         lines = raw_response.split(b'\n')
         # Assign lines to either data or meta lines
         meta_lines = []
         data_lines = []
         for line in lines:
-            if line.startswith(entry_prefix) and entry_prefix + b'[]' not in line:
+            if line.startswith(list_entry_prefix) and list_entry_prefix + b'[]' not in line:
                 # Append data line (without entry prefix)
                 # So for userInfo.0.userId=226804555, only add 0.userId=226804555 (assuming prefix is userInfo.)
-                data_lines.append(line[len(entry_prefix):])
+                data_lines.append(line[len(list_entry_prefix):])
             else:
                 # Add meta data lines as is
                 meta_lines.append(line)
@@ -357,9 +345,9 @@ class Client:
         return datasets, meta_lines
 
     @staticmethod
-    def handle_stats_response_packet(packet: bytes, length_indicator: bytes) -> Tuple[bytes, bool]:
-        body = packet[12:-1]
-        lines = body.split(b'\n')
+    def handle_list_response_packet(packet: Packet, list_entry_prefix: bytes) -> Tuple[bytes, bool]:
+        body = packet.get_data()
+        lines = packet.get_data_lines()
 
         # Check for errors
         if b'errorCode' in body:
@@ -376,7 +364,7 @@ class Client:
                 raise PyBfbc2StatsSearchError('FESL found no or too many results matching the search query')
             else:
                 raise PyBfbc2StatsError(f'FESL returned an error (code {error_code.decode("utf")})')
-        elif b'data=' not in body and length_indicator not in body:
+        elif b'data=' not in body and list_entry_prefix + b'[]' not in body:
             # Packet is neither one data packet of a multi-packet response nor a single-packet response
             raise PyBfbc2StatsError('FESL returned invalid response')
 

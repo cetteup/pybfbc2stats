@@ -5,6 +5,7 @@ import time
 
 from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
+from .packet import Packet
 
 
 class Connection:
@@ -42,20 +43,20 @@ class Connection:
             self.is_connected = False
             raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
-    def write(self, data: bytes) -> None:
+    def write(self, packet: Packet) -> None:
         logging.debug('Writing to socket')
         if not self.is_connected:
             logging.debug('Socket is not connected yet, connecting now')
             self.connect()
 
         try:
-            self.ssl_socket.sendall(data)
+            self.ssl_socket.sendall(bytes(packet))
         except socket.error:
             raise PyBfbc2StatsConnectionError('Failed to send data to server')
 
-        logging.debug(data)
+        logging.debug(packet)
 
-    def read(self) -> bytes:
+    def read(self) -> Packet:
         logging.debug('Reading from socket')
         if not self.is_connected:
             logging.debug('Socket is not connected yet, connecting now')
@@ -95,7 +96,11 @@ class Connection:
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
 
-        return header + body
+        # Init and validate packet (throws exception if invalid)
+        packet = Packet(header, body)
+        packet.validate()
+
+        return packet
 
     def read_safe(self, buflen: int) -> bytes:
         try:

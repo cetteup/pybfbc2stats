@@ -6,6 +6,7 @@ import time
 from .connection import Connection
 from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
+from .packet import Packet
 
 
 class AsyncConnection(Connection):
@@ -38,21 +39,21 @@ class AsyncConnection(Connection):
             self.is_connected = False
             raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
-    async def write(self, data: bytes) -> None:
+    async def write(self, packet: Packet) -> None:
         logging.debug('Writing to socket')
         if not self.is_connected:
             logging.debug('Socket is not connected yet, connecting now')
             await self.connect()
 
         try:
-            self.writer.write(data)
+            self.writer.write(bytes(packet))
             await self.writer.drain()
         except socket.error:
             raise PyBfbc2StatsConnectionError('Failed to send data to server')
 
-        logging.debug(data)
+        logging.debug(packet)
 
-    async def read(self) -> bytes:
+    async def read(self) -> Packet:
         logging.debug('Reading from socket')
         if not self.is_connected:
             logging.debug('Socket is not connected yet, connecting now')
@@ -92,7 +93,11 @@ class AsyncConnection(Connection):
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
 
-        return header + body
+        # Init and validate packet (throws exception if invalid)
+        packet = Packet(header, body)
+        packet.validate()
+
+        return packet
 
     async def read_safe(self, buflen: int) -> bytes:
         try:

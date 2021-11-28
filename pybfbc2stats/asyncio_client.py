@@ -24,7 +24,7 @@ class AsyncClient(Client):
 
     async def hello(self) -> bytes:
         if self.track_steps and Step.hello in self.completed_steps:
-            return self.completed_steps[Step.hello]
+            return bytes(self.completed_steps[Step.hello])
 
         hello_packet = self.build_hello_packet()
         await self.connection.write(hello_packet)
@@ -38,7 +38,7 @@ class AsyncClient(Client):
         # Reply to initial memcheck
         await self.memcheck()
 
-        return response
+        return bytes(response)
 
     async def memcheck(self) -> None:
         memcheck_packet = self.build_memcheck_packet()
@@ -46,7 +46,7 @@ class AsyncClient(Client):
 
     async def login(self) -> bytes:
         if self.track_steps and Step.login in self.completed_steps:
-            return self.completed_steps[Step.login]
+            return bytes(self.completed_steps[Step.login])
         elif self.track_steps and Step.hello not in self.completed_steps:
             await self.hello()
 
@@ -60,13 +60,13 @@ class AsyncClient(Client):
 
         self.completed_steps[Step.login] = response
 
-        return response
+        return bytes(response)
 
     async def logout(self) -> bytes:
         logout_packet = self.build_logout_packet()
         await self.connection.write(logout_packet)
         self.completed_steps.clear()
-        return await self.connection.read()
+        return bytes(await self.connection.read())
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -139,19 +139,19 @@ class AsyncClient(Client):
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    async def get_list_response(self, list_parse_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    async def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
             packet = await self.connection.read()
-            if b'TXN=MemCheck' in packet:
+            if b'TXN=MemCheck' in packet.body:
                 # Respond to memcheck
                 await self.memcheck()
-            elif b'TXN=Ping' in packet:
+            elif b'TXN=Ping' in packet.body:
                 # Respond to ping
                 await self.ping()
             else:
-                data, last_packet = self.handle_stats_response_packet(packet, list_parse_prefix + b'[]=')
+                data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
                 response += data
 
-        return self.parse_list_response(response, list_parse_prefix)
+        return self.parse_list_response(response, list_entry_prefix)

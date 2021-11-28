@@ -27,6 +27,7 @@ class Platform(int, Enum):
 
 DEFAULT_BUFFER_SIZE = 8096
 HEADER_LENGTH = 12
+VALID_HEADER_TYPES = [b'acct', b'fsys', b'rank']
 FESL_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',
