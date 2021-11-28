@@ -72,6 +72,15 @@ class AsyncClient(Client):
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
 
+    async def get_lkey(self) -> bytes:
+        if self.track_steps and Step.login not in self.completed_steps:
+            await self.login()
+
+        packet = self.completed_steps[Step.login]
+        parsed = self.parse_simple_response(packet.get_data())
+
+        return parsed['lkey']
+
     async def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
 

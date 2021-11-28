@@ -88,6 +88,15 @@ class Client:
         ping_packet = self.build_ping_packet()
         self.connection.write(ping_packet)
 
+    def get_lkey(self) -> bytes:
+        if self.track_steps and Step.login not in self.completed_steps:
+            self.login()
+
+        packet = self.completed_steps[Step.login]
+        parsed = self.parse_simple_response(packet.get_data())
+
+        return parsed['lkey']
+
     def lookup_usernames(self, usernames: List[str], namespace: Namespace) -> List[dict]:
         return self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
 
@@ -298,6 +307,19 @@ class Client:
             message = ''
 
         return valid, message
+
+    @staticmethod
+    def parse_simple_response(raw_response: bytes) -> dict:
+        lines = raw_response.split(b'\n')
+
+        parsed = {}
+        for line in lines:
+            elements = line.split(b'=', 1)
+            key = elements[0].decode()
+            value = elements[1].decode()
+            parsed[key] = value
+
+        return parsed
 
     @staticmethod
     def parse_list_response(raw_response: bytes, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
