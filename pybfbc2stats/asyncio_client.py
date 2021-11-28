@@ -104,11 +104,11 @@ class AsyncClient(Client):
 
         return results.pop()
 
-    async def search_name(self, screen_name: str) -> dict:
+    async def search_name(self, screen_name: str, namespace: Namespace) -> dict:
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
-        search_packet = self.build_search_packet(screen_name)
+        search_packet = self.build_search_packet(screen_name, namespace)
         await self.connection.write(search_packet)
 
         parsed_response, metadata = await self.get_list_response(b'users.')
