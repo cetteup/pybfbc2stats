@@ -65,13 +65,16 @@ class Connection:
         # Read header only first
         logging.debug('Reading packet header')
         header = b''
-        start = time.time()
+        last_received = time.time()
         timed_out = False
         while len(header) < HEADER_LENGTH and not timed_out:
             iteration_buffer = self.read_safe(HEADER_LENGTH - len(header))
             header += iteration_buffer
 
-            timed_out = time.time() > start + self.timeout
+            # Update timestamp if any data was retrieved during current iteration
+            if len(iteration_buffer) > 0:
+                last_received = time.time()
+            timed_out = time.time() > last_received + self.timeout
 
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
@@ -82,14 +85,17 @@ class Connection:
         logging.debug('Reading packet body')
         body = b''
         receive_next = True
-        start = time.time()
+        last_received = time.time()
         timed_out = False
         while receive_next and not timed_out:
             iteration_buffer = self.read_safe(1)
             body += iteration_buffer
 
+            # Update timestamp if any data was retrieved during current iteration
+            if len(iteration_buffer) > 0:
+                last_received = time.time()
             receive_next = len(body) == 0 or body[-1] != 0
-            timed_out = time.time() > start + self.timeout
+            timed_out = time.time() > last_received + self.timeout
 
         logging.debug(body)
 
