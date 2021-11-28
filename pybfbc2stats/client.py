@@ -93,7 +93,7 @@ class Client:
             self.login()
 
         packet = self.completed_steps[Step.login]
-        parsed = self.parse_simple_response(packet.get_data())
+        parsed = self.parse_simple_response(packet)
 
         return parsed['lkey']
 
@@ -309,11 +309,9 @@ class Client:
         return valid, message
 
     @staticmethod
-    def parse_simple_response(raw_response: bytes) -> dict:
-        lines = raw_response.split(b'\n')
-
+    def parse_simple_response(packet: Packet) -> dict:
         parsed = {}
-        for line in lines:
+        for line in packet.get_data_lines():
             elements = line.split(b'=', 1)
             key = elements[0].decode()
             value = elements[1].decode()

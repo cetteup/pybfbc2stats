@@ -77,7 +77,7 @@ class AsyncClient(Client):
             await self.login()
 
         packet = self.completed_steps[Step.login]
-        parsed = self.parse_simple_response(packet.get_data())
+        parsed = self.parse_simple_response(packet)
 
         return parsed['lkey']
 
