@@ -109,6 +109,12 @@ Send the login details to the FESL server.
 
 ----
 
+#### \[Async\]Client.get_lkey()
+
+Get the login key (lkey) used to authenticate on theater backend.
+
+----
+
 #### \[Async\]Client.lookup_usernames(usernames, namespace)
 
 Lookup a list of **url encoded/quoted** usernames and return any matching personas (only exact name matches are returned).
