@@ -23,7 +23,9 @@ class Client:
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
         self.platform = platform
-        self.timeout = timeout
+        # Using the client with too short of a timeout leads to lots if issues with reads timing out and subsequent
+        # reads then reading data from the previous "request" => enforce minimum timeout of 2 seconds
+        self.timeout = max(timeout, 2.0)
         self.track_steps = track_steps
         self.connection = Connection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'], timeout)
         self.completed_steps = {}
