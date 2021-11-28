@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from .asyncio_connection import AsyncConnection
 from .client import Client
@@ -62,11 +62,13 @@ class AsyncClient(Client):
 
         return bytes(response)
 
-    async def logout(self) -> bytes:
-        logout_packet = self.build_logout_packet()
-        await self.connection.write(logout_packet)
-        self.completed_steps.clear()
-        return bytes(await self.connection.read())
+    async def logout(self) -> Optional[bytes]:
+        # Only send logout if client is currently logged in
+        if self.track_steps and Step.login in self.completed_steps:
+            logout_packet = self.build_logout_packet()
+            await self.connection.write(logout_packet)
+            self.completed_steps.clear()
+            return bytes(await self.connection.read())
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()

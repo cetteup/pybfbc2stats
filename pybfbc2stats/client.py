@@ -1,5 +1,5 @@
 from base64 import b64encode, b64decode
-from typing import List, Union, Dict, Tuple
+from typing import List, Union, Dict, Tuple, Optional
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import Connection
@@ -78,11 +78,12 @@ class Client:
 
         return bytes(response)
 
-    def logout(self) -> bytes:
-        logout_packet = self.build_logout_packet()
-        self.connection.write(logout_packet)
-        self.completed_steps.clear()
-        return bytes(self.connection.read())
+    def logout(self) -> Optional[bytes]:
+        if self.track_steps and Step.login in self.completed_steps:
+            logout_packet = self.build_logout_packet()
+            self.connection.write(logout_packet)
+            self.completed_steps.clear()
+            return bytes(self.connection.read())
 
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
