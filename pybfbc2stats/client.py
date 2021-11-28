@@ -301,7 +301,7 @@ class Client:
     def is_valid_login_response(response: Packet) -> Tuple[bool, str]:
         valid = b'lkey=' in response.body
         if not valid:
-            lines = response[12:-1].split(b'\n')
+            lines = response.get_data_lines()
             message = next((line[18:-1] for line in lines if line.startswith(b'localizedMessage=')), b'').decode('utf8')
         else:
             message = ''
