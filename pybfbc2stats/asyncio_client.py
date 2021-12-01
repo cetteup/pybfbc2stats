@@ -99,6 +99,16 @@ class AsyncFeslClient(AsyncClient):
         ping_packet = FeslClient.build_ping_packet()
         await self.connection.write(ping_packet)
 
+    async def get_theater_details(self) -> Tuple[str, int]:
+        if self.track_steps and Step.hello not in self.completed_steps:
+            await self.hello()
+
+        packet = self.completed_steps[Step.hello]
+        parsed = self.parse_simple_response(packet)
+
+        # Field is called "ip" but actually contains the hostname
+        return parsed['theaterIp'], parsed['theaterPort']
+
     async def get_lkey(self) -> bytes:
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
