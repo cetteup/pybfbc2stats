@@ -2,7 +2,7 @@ from base64 import b64encode, b64decode
 from typing import List, Union, Dict, Tuple, Optional
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
-from .connection import Connection
+from .connection import SecureConnection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
@@ -16,7 +16,7 @@ class Client:
     platform: Platform
     timeout: float
     track_steps: bool
-    connection: Connection
+    connection: SecureConnection
     completed_steps: Dict[Step, Packet]
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
@@ -28,7 +28,11 @@ class Client:
         # reads then reading data from the previous "request" => enforce minimum timeout of 2 seconds
         self.timeout = max(timeout, 2.0)
         self.track_steps = track_steps
-        self.connection = Connection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'], timeout)
+        self.connection = SecureConnection(
+            FESL_DETAILS[self.platform]['host'],
+            FESL_DETAILS[self.platform]['port'],
+            timeout
+        )
         self.completed_steps = {}
 
     def __enter__(self):
@@ -89,7 +93,7 @@ class Client:
         ping_packet = self.build_ping_packet()
         self.connection.write(ping_packet)
 
-    def get_lkey(self) -> bytes:
+    def get_lkey(self) -> str:
         if self.track_steps and Step.login not in self.completed_steps:
             self.login()
 

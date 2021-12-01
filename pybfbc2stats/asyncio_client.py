@@ -1,19 +1,22 @@
 from typing import List, Tuple, Optional
 
-from .asyncio_connection import AsyncConnection
+from .asyncio_connection import AsyncSecureConnection
 from .client import Client
 from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
 
 
 class AsyncClient(Client):
-    connection: AsyncConnection
+    connection: AsyncSecureConnection
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         super().__init__(username, password, platform, timeout=timeout, track_steps=track_steps)
-        self.connection = AsyncConnection(FESL_DETAILS[self.platform]['host'], FESL_DETAILS[self.platform]['port'],
-                                          timeout)
+        self.connection = AsyncSecureConnection(
+            FESL_DETAILS[self.platform]['host'],
+            FESL_DETAILS[self.platform]['port'],
+            timeout
+        )
 
     async def __aenter__(self):
         return self

@@ -2,15 +2,16 @@ import asyncio
 import logging
 import socket
 import time
+from typing import Tuple
 
-from .connection import Connection
+from .connection import Connection, SecureConnection
 from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
 from .packet import Packet
 
 
 class AsyncConnection(Connection):
-    tcp_socket: socket.socket
+    sock: socket.socket
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
 
@@ -21,16 +22,12 @@ class AsyncConnection(Connection):
         if self.is_connected:
             return
 
-        # Init raw socket
-        self.tcp_socket = self.init_socket(self.timeout)
-
-        # Init SSL context
-        context = self.init_ssl_context()
+        # Init socket
+        self.sock = self.init_socket()
 
         try:
-            self.tcp_socket.connect((self.host, self.port))
-            self.reader, self.writer = await asyncio.open_connection(sock=self.tcp_socket, ssl=context,
-                                                                     server_hostname=self.host)
+            self.sock.connect((self.host, self.port))
+            self.reader, self.writer = await self.open_connection()
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
@@ -125,6 +122,9 @@ class AsyncConnection(Connection):
 
         return buffer
 
+    async def open_connection(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        return await asyncio.open_connection(sock=self.sock, server_hostname=self.host)
+
     def __del__(self):
         pass
 
@@ -136,3 +136,9 @@ class AsyncConnection(Connection):
             return True
 
         return False
+
+
+class AsyncSecureConnection(AsyncConnection):
+    async def open_connection(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        context = SecureConnection.init_ssl_context()
+        return await asyncio.open_connection(sock=self.sock, ssl=context, server_hostname=self.host)

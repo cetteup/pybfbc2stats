@@ -11,8 +11,7 @@ from .packet import Packet
 class Connection:
     host: str
     port: int
-    protocol: int
-    ssl_socket: ssl.SSLSocket
+    sock: socket.socket
     timeout: float
     is_connected: bool = False
 
@@ -25,16 +24,11 @@ class Connection:
         if self.is_connected:
             return
 
-        # Init raw socket
-        raw_socket = self.init_socket(self.timeout)
-
-        # Init SSL context
-        context = self.init_ssl_context()
-
-        self.ssl_socket = context.wrap_socket(raw_socket)
+        # Init socket
+        self.sock = self.init_socket()
 
         try:
-            self.ssl_socket.connect((self.host, self.port))
+            self.sock.connect((self.host, self.port))
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
@@ -50,7 +44,7 @@ class Connection:
             self.connect()
 
         try:
-            self.ssl_socket.sendall(bytes(packet))
+            self.sock.sendall(bytes(packet))
         except socket.error:
             raise PyBfbc2StatsConnectionError('Failed to send data to server')
 
@@ -110,7 +104,7 @@ class Connection:
 
     def read_safe(self, buflen: int) -> bytes:
         try:
-            buffer = self.ssl_socket.recv(buflen)
+            buffer = self.sock.recv(buflen)
         except socket.timeout:
             raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
         except socket.error:
@@ -118,13 +112,37 @@ class Connection:
 
         return buffer
 
-    @staticmethod
-    def init_socket(timeout: float) -> socket.socket:
+    def init_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
+        sock.settimeout(self.timeout)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
         return sock
+
+    def __del__(self):
+        self.close()
+
+    def close(self) -> bool:
+        if hasattr(self, 'sock') and isinstance(self.sock, socket.socket):
+            if self.is_connected:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            self.sock.close()
+            self.is_connected = False
+            return True
+
+        return False
+
+
+class SecureConnection(Connection):
+    sock: ssl.SSLSocket
+
+    def init_socket(self) -> ssl.SSLSocket:
+        raw_socket = super().init_socket()
+
+        # Init SSL context
+        context = self.init_ssl_context()
+
+        return context.wrap_socket(raw_socket)
 
     @staticmethod
     def init_ssl_context():
@@ -136,15 +154,13 @@ class Connection:
 
         return context
 
-    def __del__(self):
-        self.close()
-
     def close(self) -> bool:
-        if hasattr(self, 'ssl_socket') and isinstance(self.ssl_socket, socket.socket):
+        if hasattr(self, 'sock') and isinstance(self.sock, ssl.SSLSocket):
             if self.is_connected:
-                self.ssl_socket.shutdown(socket.SHUT_RDWR)
-            self.ssl_socket.close()
+                self.sock.shutdown(socket.SHUT_RDWR)
+            self.sock.close()
             self.is_connected = False
             return True
 
         return False
+
