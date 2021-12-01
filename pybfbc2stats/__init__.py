@@ -1,6 +1,6 @@
-from .asyncio_client import AsyncClient
+from .asyncio_client import AsyncFeslClient
 from .asyncio_connection import AsyncConnection
-from .client import Client
+from .client import FeslClient
 from .connection import Connection
 from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import PyBfbc2StatsError, PyBfbc2StatsTimeoutError, PyBfbc2StatsParameterError, \
@@ -14,7 +14,7 @@ Simple Python library for retrieving statistics of Battlefield: Bad Company 2 pl
 __version__ = '0.2.8'
 __author__ = 'cetteup'
 __credits__ = 'nemo, Luigi Auriemma'
-__all__ = ['Connection', 'Client', 'AsyncConnection', 'AsyncClient',
+__all__ = ['Connection', 'FeslClient', 'AsyncConnection', 'AsyncFeslClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS',
            'PyBfbc2StatsError', 'PyBfbc2StatsConnectionError', 'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError',
            'PyBfbc2StatsLoginError', 'PyBfbc2StatsNotFoundError', 'PyBfbc2StatsSearchError']

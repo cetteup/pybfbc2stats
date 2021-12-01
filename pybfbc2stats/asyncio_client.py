@@ -1,17 +1,39 @@
 from typing import List, Tuple, Optional
 
-from .asyncio_connection import AsyncSecureConnection
-from .client import Client
+from .asyncio_connection import AsyncSecureConnection, AsyncConnection
+from .client import Client, FeslClient
 from .constants import Step, Namespace, FESL_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
 
 
 class AsyncClient(Client):
+    connection: AsyncConnection
+
+    def __init__(self, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
+        super().__init__(platform, timeout, track_steps)
+        self.connection = AsyncConnection(
+            FESL_DETAILS[self.platform]['host'],
+            FESL_DETAILS[self.platform]['port'],
+            timeout
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *excinfo):
+        await self.connection.close()
+
+
+class AsyncFeslClient(AsyncClient):
+    username: bytes
+    password: bytes
     connection: AsyncSecureConnection
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        super().__init__(username, password, platform, timeout=timeout, track_steps=track_steps)
+        super().__init__(platform, timeout, track_steps)
+        self.username = username.encode('utf8')
+        self.password = password.encode('utf8')
         self.connection = AsyncSecureConnection(
             FESL_DETAILS[self.platform]['host'],
             FESL_DETAILS[self.platform]['port'],
@@ -29,7 +51,7 @@ class AsyncClient(Client):
         if self.track_steps and Step.hello in self.completed_steps:
             return bytes(self.completed_steps[Step.hello])
 
-        hello_packet = self.build_hello_packet()
+        hello_packet = FeslClient.build_hello_packet(FESL_DETAILS[self.platform]['clientString'])
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -44,7 +66,7 @@ class AsyncClient(Client):
         return bytes(response)
 
     async def memcheck(self) -> None:
-        memcheck_packet = self.build_memcheck_packet()
+        memcheck_packet = FeslClient.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
 
     async def login(self) -> bytes:
@@ -53,11 +75,11 @@ class AsyncClient(Client):
         elif self.track_steps and Step.hello not in self.completed_steps:
             await self.hello()
 
-        login_packet = self.build_login_packet(self.username, self.password)
+        login_packet = FeslClient.build_login_packet(self.username, self.password)
         await self.connection.write(login_packet)
         response = await self.connection.read()
 
-        response_valid, error_message = self.is_valid_login_response(response)
+        response_valid, error_message = FeslClient.is_valid_login_response(response)
         if not response_valid:
             raise PyBfbc2StatsLoginError(error_message)
 
@@ -68,13 +90,13 @@ class AsyncClient(Client):
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.track_steps and Step.login in self.completed_steps:
-            logout_packet = self.build_logout_packet()
+            logout_packet = FeslClient.build_logout_packet()
             await self.connection.write(logout_packet)
             self.completed_steps.clear()
             return bytes(await self.connection.read())
 
     async def ping(self) -> None:
-        ping_packet = self.build_ping_packet()
+        ping_packet = FeslClient.build_ping_packet()
         await self.connection.write(ping_packet)
 
     async def get_lkey(self) -> bytes:
@@ -104,7 +126,7 @@ class AsyncClient(Client):
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
-        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
+        lookup_packet = FeslClient.build_user_lookup_packet(identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
         parsed_response, *_ = await self.get_list_response(b'userInfo.')
@@ -122,18 +144,18 @@ class AsyncClient(Client):
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
-        search_packet = self.build_search_packet(screen_name, namespace)
+        search_packet = FeslClient.build_search_packet(screen_name, namespace)
         await self.connection.write(search_packet)
 
         parsed_response, metadata = await self.get_list_response(b'users.')
-        return self.format_search_response(parsed_response, metadata)
+        return FeslClient.format_search_response(parsed_response, metadata)
 
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
         # Send query in chunks
-        chunk_packets = self.build_stats_query_packets(userid, keys)
+        chunk_packets = FeslClient.build_stats_query_packets(userid, keys)
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
@@ -145,7 +167,7 @@ class AsyncClient(Client):
         if self.track_steps and Step.login not in self.completed_steps:
             await self.login()
 
-        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        leaderboard_packet = FeslClient.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
         parsed_response, *_ = await self.get_list_response(b'stats.')
@@ -165,7 +187,7 @@ class AsyncClient(Client):
                 # Respond to ping
                 await self.ping()
             else:
-                data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
+                data, last_packet = FeslClient.handle_list_response_packet(packet, list_entry_prefix)
                 response += data
 
-        return self.parse_list_response(response, list_entry_prefix)
+        return FeslClient.parse_list_response(response, list_entry_prefix)

@@ -1,8 +1,9 @@
+import logging
 from base64 import b64encode, b64decode
 from typing import List, Union, Dict, Tuple, Optional
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
-from .connection import SecureConnection
+from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
@@ -11,24 +12,19 @@ from .packet import Packet
 
 
 class Client:
-    username: bytes
-    password: bytes
     platform: Platform
     timeout: float
     track_steps: bool
-    connection: SecureConnection
+    connection: Connection
     completed_steps: Dict[Step, Packet]
 
-    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
-                 track_steps: bool = True):
-        self.username = username.encode('utf8')
-        self.password = password.encode('utf8')
+    def __init__(self, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
         self.platform = platform
         # Using the client with too short of a timeout leads to lots if issues with reads timing out and subsequent
         # reads then reading data from the previous "request" => enforce minimum timeout of 2 seconds
         self.timeout = max(timeout, 2.0)
         self.track_steps = track_steps
-        self.connection = SecureConnection(
+        self.connection = Connection(
             FESL_DETAILS[self.platform]['host'],
             FESL_DETAILS[self.platform]['port'],
             timeout
@@ -39,6 +35,43 @@ class Client:
         return self
 
     def __exit__(self, *excinfo):
+        self.connection.close()
+
+    @staticmethod
+    def parse_simple_response(packet: Packet) -> dict:
+        parsed = {}
+        for line in packet.get_data_lines():
+            elements = line.split(b'=', 1)
+            if len(elements) == 2:
+                key = elements[0].decode()
+                value = elements[1].decode()
+                parsed[key] = value
+
+        return parsed
+
+    @staticmethod
+    def dict_list_to_dict(dict_list: List[dict]) -> dict:
+        sorted_list = sorted(dict_list, key=lambda x: x['key'])
+        return {entry['key']: entry['value'] for entry in sorted_list}
+
+
+class FeslClient(Client):
+    username: bytes
+    password: bytes
+    connection: SecureConnection
+
+    def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
+                 track_steps: bool = True):
+        super().__init__(platform, timeout, track_steps)
+        self.username = username.encode('utf8')
+        self.password = password.encode('utf8')
+        self.connection = SecureConnection(
+            FESL_DETAILS[self.platform]['host'],
+            FESL_DETAILS[self.platform]['port'],
+            timeout
+        )
+
+    def __exit__(self, *excinfo):
         self.logout()
         self.connection.close()
 
@@ -46,7 +79,7 @@ class Client:
         if self.track_steps and Step.hello in self.completed_steps:
             return bytes(self.completed_steps[Step.hello])
 
-        hello_packet = self.build_hello_packet()
+        hello_packet = self.build_hello_packet(FESL_DETAILS[self.platform]['clientString'])
         self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -166,7 +199,7 @@ class Client:
 
         parsed_response, *_ = self.get_list_response(b'stats.')
         # Turn sub lists into dicts and return result
-        return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+        return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
     def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
@@ -195,11 +228,11 @@ class Client:
                 for key, value in item.items():
                     dotted_elements = [prefix, str(index).encode('utf8'), key]
                     # byte dict with prefix: userInfo.0.userName=NoobKillah
-                    item_list.append(Client.build_list_item(dotted_elements, value))
+                    item_list.append(FeslClient.build_list_item(dotted_elements, value))
             else:
                 # bytes with prefix only: keys.0=accuracy
                 dotted_elements = [prefix, str(index).encode('utf8')]
-                item_list.append(Client.build_list_item(dotted_elements, item))
+                item_list.append(FeslClient.build_list_item(dotted_elements, item))
 
         # Join list together, add list length indicator and return
         return b'\n'.join(item_list) + b'\n' + prefix + b'.[]=' + str(len(items)).encode('utf8')
@@ -208,10 +241,11 @@ class Client:
     def build_list_item(dotted_elements: List[bytes], value: bytes) -> bytes:
         return b'.'.join(dotted_elements) + b'=' + value
 
-    def build_hello_packet(self) -> Packet:
+    @staticmethod
+    def build_hello_packet(client_string: bytes) -> Packet:
         return Packet.build(
             b'fsys\xc0\x00\x00\x01',
-            b'TXN=Hello\nclientString=' + FESL_DETAILS[self.platform]['clientString'] +
+            b'TXN=Hello\nclientString=' + client_string +
             b'\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\n'
             b'fragmentSize=8096\nclientType=server'
         )
@@ -249,7 +283,7 @@ class Client:
     def build_user_lookup_packet(user_identifiers: List[str], namespace: Namespace, lookup_type: LookupType) -> Packet:
         user_dicts = [{bytes(lookup_type): identifier.encode('utf8'), b'namespace': bytes(namespace)}
                       for identifier in user_identifiers]
-        lookup_list = Client.build_list_body(user_dicts, b'userInfo')
+        lookup_list = FeslClient.build_list_body(user_dicts, b'userInfo')
         lookup_packet = Packet.build(
             b'acct\xc0\x00\x00\n',
             b'TXN=NuLookupUserInfo\n' + lookup_list
@@ -267,7 +301,7 @@ class Client:
 
     @staticmethod
     def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> Packet:
-        key_list = Client.build_list_body(keys, b'keys')
+        key_list = FeslClient.build_list_body(keys, b'keys')
         leaderboard_packet = Packet.build(
             b'rank\xc0\x00\x00\x00',
             b'TXN=GetTopNAndStats\nkey=' + sort_by + b'\nownerType=1\nminRank=' + str(min_rank).encode('utf8') +
@@ -279,7 +313,7 @@ class Client:
     @staticmethod
     def build_stats_query_packets(userid: int, keys: List[bytes]) -> List[Packet]:
         userid_bytes = str(userid).encode('utf8')
-        key_list = Client.build_list_body(keys, b'keys')
+        key_list = FeslClient.build_list_body(keys, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
         # Base64 encode query for transfer
         stats_query_b64 = b64encode(stats_query)
@@ -312,17 +346,6 @@ class Client:
             message = ''
 
         return valid, message
-
-    @staticmethod
-    def parse_simple_response(packet: Packet) -> dict:
-        parsed = {}
-        for line in packet.get_data_lines():
-            elements = line.split(b'=', 1)
-            key = elements[0].decode()
-            value = elements[1].decode()
-            parsed[key] = value
-
-        return parsed
 
     @staticmethod
     def parse_list_response(raw_response: bytes, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
@@ -408,11 +431,6 @@ class Client:
             last_packet = True
 
         return data, last_packet
-
-    @staticmethod
-    def dict_list_to_dict(dict_list: List[dict]) -> dict:
-        sorted_list = sorted(dict_list, key=lambda x: x['key'])
-        return {entry['key']: entry['value'] for entry in sorted_list}
 
     @staticmethod
     def format_search_response(parsed_response: List[dict], metadata: List[bytes]) -> dict:
