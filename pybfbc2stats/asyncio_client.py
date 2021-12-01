@@ -36,7 +36,7 @@ class AsyncClient(Client):
         response = await self.connection.read()
         _ = await self.connection.read()
 
-        self.completed_steps[Step.hello] = hello_packet
+        self.completed_steps[Step.hello] = response
 
         # Reply to initial memcheck
         await self.memcheck()
