@@ -31,7 +31,7 @@ export OPENSSL_CONF=$(realpath openssl.cnf)
 
 The following examples show how to find a player/persona by name and retrieve their stats using the default as well as the async client.
 
-### Retrieve stats using the default client
+### Retrieve stats using the default FESL client
 
 ```python
 from urllib.parse import quote
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     main()
 ```
 
-### Retrieve stats using the async client
+### Retrieve stats using the async FESL client
 
 ```python
 import asyncio
@@ -67,6 +67,55 @@ async def main():
         stats = await client.get_stats(int(persona['userId']))
         print(stats)
 
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+### Retrieve the server list using the default theater client
+
+```python
+from pybfbc2stats import FeslClient, TheaterClient, Platform
+
+def main():
+    # First, get theater details and login key (lkey) from FESL
+    with FeslClient('ea_account_name', 'ea_account_password', Platform.ps3) as feslClient:
+        theater_hostname, theater_port = feslClient.get_theater_details()
+        lkey = feslClient.get_lkey()
+    
+    # Now use the theater client to get the server list
+    with TheaterClient(theater_hostname, theater_port, lkey, Platform.ps3) as theaterClient:
+        lobbies = theaterClient.get_lobbies()
+        servers = []
+        for lobby in lobbies:
+            lobby_servers = theaterClient.get_servers(int(lobby['LID']))
+            servers.extend(lobby_servers)
+        print(servers)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Retrieve the server list using the async theater client
+
+```python
+import asyncio
+from pybfbc2stats import AsyncFeslClient, AsyncTheaterClient, Platform
+
+async def main():
+    # First, get theater details and login key (lkey) from FESL
+    async with AsyncFeslClient('ea_account_name', 'ea_account_password', Platform.ps3) as feslClient:
+        theater_hostname, theater_port = await feslClient.get_theater_details()
+        lkey = await feslClient.get_lkey()
+    
+    # Now use the theater client to get the server list
+    async with AsyncTheaterClient(theater_hostname, theater_port, lkey, Platform.ps3) as theaterClient:
+        lobbies = await theaterClient.get_lobbies()
+        servers = []
+        for lobby in lobbies:
+            lobby_servers = await theaterClient.get_servers(int(lobby['LID']))
+            servers.extend(lobby_servers)
+        print(servers)
 
 if __name__ == '__main__':
     asyncio.run(main())
