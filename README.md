@@ -127,7 +127,7 @@ Both the default and the async clients offer the same methods with the same sign
 
 #### \[Async\]FeslClient(username, password, platform, timeout)
 
-Create a new [Async]Client instance.
+Create a new [Async]FeslClient instance.
 
 **Note**: The account has to be valid for Bad Company 2. If your account does not work, you can create a new one using [ealist](https://aluigi.altervista.org/papers.htm#ealist): `.\ealist.exe -A -a [username] [password] bfbc2-pc` (the created account will work for all platforms).
 
@@ -344,4 +344,90 @@ from pybfbc2stats import FeslClient, Platform
 
 client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 leaderboard = client.get_leaderboard(1, 50, b'time')
+```
+
+----
+
+#### \[Async\]TheaterClient(host, port, lkey, platform, timeout)
+
+Create a new [Async]TheaterClient instance.
+
+**Arguments**
+
+  Argument     | Type | Opt/Required | Note
+---------------|------|--------------|-----
+`host`         | str  | Required     | IP/hostname of the theater backend for the platform (can be retrieved via FESL)
+`port`         | int  | Required     | Port of the theater backend for the platform (can be retrieved via FESL)
+`lkey`         | str  | Required     | Login key (lkey) (retrieved via FESL)
+`platform`     | Platform | Required | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)
+`timeout`      | float   | Optional  | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend)
+
+----
+
+#### \[Async\]TheaterClient.connect()
+
+Initialize the connection to the Theater backend by sending the initial CONN/hello packet.
+
+----
+
+#### \[Async\]TheaterClient.authenticate()
+
+Authenticate against/log into the Theater backend using the lkey retrieved via FESL.
+
+----
+
+#### \[Async\]TheaterClient.get_lobbies()
+
+Retrieve all available game (server) lobbies.
+
+**Example**
+
+```python
+from pybfbc2stats import TheaterClient, Platform
+
+client = TheaterClient('bfbc2-ps3-server.theater.ea.com', 18336, 'your_lkey', Platform.ps3)
+lobbies = client.get_lobbies()
+```
+
+----
+
+#### \[Async\]TheaterClient.get_servers(lobby_id)
+
+Retrieve all available game servers from the given lobby.
+
+**Arguments**
+
+  Argument     | Type | Opt/Required | Note
+---------------|------|--------------|-----
+lobby_id       | int  | Required     | Id of the game server lobby
+
+**Example**
+
+```python
+from pybfbc2stats import TheaterClient, Platform
+
+client = TheaterClient('bfbc2-ps3-server.theater.ea.com', 18336, 'your_lkey', Platform.ps3)
+servers = client.get_servers(257)
+```
+
+----
+
+#### \[Async\]TheaterClient.get_server_details(lobby_id, game_id)
+
+Retrieve full details and player list for a given server.
+
+**Arguments**
+
+  Argument     | Type | Opt/Required | Note
+---------------|------|--------------|-----
+lobby_id       | int  | Required     | If of the game server lobby the server is hosted in
+game_id        | int  | Required     | Game (server) id
+
+**Example**
+
+```python
+from pybfbc2stats import TheaterClient, Platform
+
+client = TheaterClient('bfbc2-ps3-server.theater.ea.com', 18336, 'your_lkey', Platform.ps3)
+general, detailed, players = client.get_server_details(257, 120018)
 ```
