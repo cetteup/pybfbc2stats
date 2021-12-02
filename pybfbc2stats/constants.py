@@ -2,8 +2,17 @@ from enum import Enum
 
 
 class Step(int, Enum):
+    pass
+
+
+class FeslStep(Step):
     hello = 1
     login = 2
+
+
+class TheaterStep(Step):
+    conn = 1
+    user = 2
 
 
 class Namespace(bytes, Enum):

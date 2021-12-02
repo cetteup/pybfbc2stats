@@ -1,11 +1,10 @@
-import logging
 from base64 import b64encode, b64decode
 from typing import List, Union, Dict, Tuple, Optional
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import SecureConnection, Connection
-from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, Step, Namespace, Platform, FESL_DETAILS, LookupType, \
-    DEFAULT_LEADERBOARD_KEYS
+from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
+    DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
     PyBfbc2StatsSearchError, PyBfbc2StatsLoginError
 from .packet import Packet
@@ -55,6 +54,7 @@ class FeslClient(Client):
     username: bytes
     password: bytes
     connection: SecureConnection
+    completed_steps: Dict[FeslStep, Packet]
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
@@ -71,17 +71,17 @@ class FeslClient(Client):
         self.connection.close()
 
     def hello(self) -> bytes:
-        if self.track_steps and Step.hello in self.completed_steps:
-            return bytes(self.completed_steps[Step.hello])
+        if self.track_steps and FeslStep.hello in self.completed_steps:
+            return bytes(self.completed_steps[FeslStep.hello])
 
-        hello_packet = self.build_hello_packet(FESL_DETAILS[self.platform]['clientString'])
+        hello_packet = self.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
         self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
         response = self.connection.read()
         _ = self.connection.read()
 
-        self.completed_steps[Step.hello] = response
+        self.completed_steps[FeslStep.hello] = response
 
         # Reply to initial memcheck
         self.memcheck()
@@ -93,9 +93,9 @@ class FeslClient(Client):
         self.connection.write(memcheck_packet)
 
     def login(self) -> bytes:
-        if self.track_steps and Step.login in self.completed_steps:
-            return bytes(self.completed_steps[Step.login])
-        elif self.track_steps and Step.hello not in self.completed_steps:
+        if self.track_steps and FeslStep.login in self.completed_steps:
+            return bytes(self.completed_steps[FeslStep.login])
+        elif self.track_steps and FeslStep.hello not in self.completed_steps:
             self.hello()
 
         login_packet = self.build_login_packet(self.username, self.password)
@@ -106,12 +106,12 @@ class FeslClient(Client):
         if not response_valid:
             raise PyBfbc2StatsLoginError(error_message)
 
-        self.completed_steps[Step.login] = response
+        self.completed_steps[FeslStep.login] = response
 
         return bytes(response)
 
     def logout(self) -> Optional[bytes]:
-        if self.track_steps and Step.login in self.completed_steps:
+        if self.track_steps and FeslStep.login in self.completed_steps:
             logout_packet = self.build_logout_packet()
             self.connection.write(logout_packet)
             self.completed_steps.clear()
@@ -122,20 +122,20 @@ class FeslClient(Client):
         self.connection.write(ping_packet)
 
     def get_theater_details(self) -> Tuple[str, int]:
-        if self.track_steps and Step.hello not in self.completed_steps:
+        if self.track_steps and FeslStep.hello not in self.completed_steps:
             self.hello()
 
-        packet = self.completed_steps[Step.hello]
+        packet = self.completed_steps[FeslStep.hello]
         parsed = self.parse_simple_response(packet)
 
         # Field is called "ip" but actually contains the hostname
         return parsed['theaterIp'], int(parsed['theaterPort'])
 
     def get_lkey(self) -> str:
-        if self.track_steps and Step.login not in self.completed_steps:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
-        packet = self.completed_steps[Step.login]
+        packet = self.completed_steps[FeslStep.login]
         parsed = self.parse_simple_response(packet)
 
         return parsed['lkey']
@@ -155,7 +155,7 @@ class FeslClient(Client):
 
     def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
                                 lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and Step.login not in self.completed_steps:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
         lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
@@ -173,7 +173,7 @@ class FeslClient(Client):
         return results.pop()
 
     def search_name(self, screen_name: str, namespace: Namespace) -> dict:
-        if self.track_steps and Step.login not in self.completed_steps:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
         search_packet = self.build_search_packet(screen_name, namespace)
@@ -183,7 +183,7 @@ class FeslClient(Client):
         return self.format_search_response(parsed_response, metadata)
 
     def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
-        if self.track_steps and Step.login not in self.completed_steps:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
         # Send query in chunks
@@ -196,7 +196,7 @@ class FeslClient(Client):
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
                         keys: List[bytes] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and Step.login not in self.completed_steps:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
         leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
@@ -446,3 +446,218 @@ class FeslClient(Client):
             'namespace': namespace.decode('utf8'),
             'users': parsed_response
         }
+
+
+class TheaterClient(Client):
+    lkey: bytes
+    transaction_id: int = 0
+    completed_steps: Dict[TheaterStep, Packet]
+
+    def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
+                 track_steps: bool = True):
+        connection = Connection(host, port)
+        super().__init__(connection, platform, timeout, track_steps)
+        self.lkey = lkey.encode('utf8')
+
+    def connect(self) -> bytes:
+        """
+        Initialize the connection to the Theater backend by sending the initial CONN/hello packet
+        :return: Response packet data
+        """
+        if self.track_steps and TheaterStep.conn in self.completed_steps:
+            return bytes(self.completed_steps[TheaterStep.conn])
+
+        tid = self.get_transaction_id()
+        connect_packet = self.build_conn_paket(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        self.connection.write(connect_packet)
+
+        response = self.connection.read()
+        self.completed_steps[TheaterStep.conn] = response
+
+        return bytes(response)
+
+    def authenticate(self) -> bytes:
+        """
+        Authenticate against/log into the Theater backend using the lkey retrieved via FESL
+        :return: Response packet data
+        """
+        if self.track_steps and TheaterStep.user in self.completed_steps:
+            return bytes(self.completed_steps[TheaterStep.user])
+        elif self.track_steps and TheaterStep.conn not in self.completed_steps:
+            self.connect()
+
+        tid = self.get_transaction_id()
+        auth_packet = self.build_user_packet(tid, self.lkey)
+        self.connection.write(auth_packet)
+
+        response = self.connection.read()
+
+        # TODO: Check if response is valid
+
+        self.completed_steps[TheaterStep.user] = response
+
+        return bytes(response)
+
+    def get_lobbies(self) -> List[dict]:
+        """
+        Retrieve all available game (server) lobbies
+        :return: List of lobby details
+        """
+        if self.track_steps and TheaterStep.user not in self.completed_steps:
+            self.authenticate()
+
+        tid = self.get_transaction_id()
+        lobby_list_packet = self.build_llst_packet(tid)
+        self.connection.write(lobby_list_packet)
+
+        # Theater responds with an initial LLST packet, indicating the number of lobbies,
+        # followed by n LDAT packets with the lobby details
+        llst_response = self.connection.read()
+        llst = self.parse_simple_response(llst_response)
+        num_lobbies = int(llst['NUM-LOBBIES'])
+
+        # Retrieve given number of lobbies (usually just one these days)
+        lobbies = []
+        for i in range(num_lobbies):
+            ldat_response = self.connection.read()
+            ldat = self.parse_simple_response(ldat_response)
+            lobbies.append(ldat)
+
+        return lobbies
+
+    def get_servers(self, lobby_id: int) -> List[dict]:
+        """
+        Retrieve all available game servers from the given lobby
+        :param lobby_id: Id of the game server lobby
+        :return: List of server details
+        """
+        if self.track_steps and TheaterStep.user not in self.completed_steps:
+            self.authenticate()
+
+        tid = self.get_transaction_id()
+        server_list_packet = self.build_glst_packet(tid, str(lobby_id).encode('utf8'))
+        self.connection.write(server_list_packet)
+
+        # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
+        # in the lobby. It then sends one GDAT packet per game/server
+        glst_response = self.connection.read()
+        glst = self.parse_simple_response(glst_response)
+        num_games = int(glst['LOBBY-NUM-GAMES'])
+
+        # Retrieve GDAT for all servers
+        servers = []
+        for i in range(num_games):
+            gdat_response = self.connection.read()
+            gdat = self.parse_simple_response(gdat_response)
+            servers.append(gdat)
+
+        return servers
+
+    def get_server_details(self, lobby_id: int, game_id: int) -> Tuple[dict, dict, List[dict]]:
+        """
+        Retrieve full details and player list for a given server
+        :param lobby_id: If of the game server lobby the server is hosted in
+        :param game_id: Game (server) id
+        :return: Tuple of (general server details, extended details, player list)
+        """
+        if self.track_steps and TheaterStep.user not in self.completed_steps:
+            self.authenticate()
+
+        tid = self.get_transaction_id()
+        server_details_packet = self.build_gdat_packet(tid, str(lobby_id).encode('utf8'), str(game_id).encode('utf8'))
+        self.connection.write(server_details_packet)
+
+        # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
+        # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
+        gdat_response = self.connection.read()
+        gdat = self.parse_simple_response(gdat_response)
+        gdet_response = self.connection.read()
+        gdet = self.parse_simple_response(gdet_response)
+
+        # Determine number of active players (AP)
+        num_players = int(gdat['AP'])
+        # Read PDAT packets for all players
+        players = []
+        for i in range(num_players):
+            pdat_response = self.connection.read()
+            pdat = self.parse_simple_response(pdat_response)
+            players.append(pdat)
+
+        return gdat, gdet, players
+
+    def get_transaction_id(self) -> bytes:
+        """
+        "Assign" a transaction id (each packet sent to Theater must have a sequential tid/transaction id)
+        :return: Transaction id as bytes
+        """
+        self.transaction_id += 1
+        return str(self.transaction_id).encode('utf8')
+
+    @staticmethod
+    def build_conn_paket(tid: bytes, client_string: bytes) -> Packet:
+        """
+        Build the initial hello/connection packet
+        :param tid: Transaction id (usually 1, must be sent as first packet)
+        :param client_string: Game client string (e.g. "bfbc2-pc")
+        :return: Complete packet to establish connection
+        """
+        return Packet.build(
+            b'CONN@\x00\x00\x00',
+            b'PROT=2\nPROD=' + client_string + b'\nVERS=1.1\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.0.0.0.0\nTID=' + tid
+        )
+
+    @staticmethod
+    def build_user_packet(tid: bytes, lkey: bytes) -> Packet:
+        """
+        Build the user/login packet
+        :param tid: Transaction id (usually 2, must be sent as second packet)
+        :param lkey: Login key from a FESL session
+        :return: Complete packet to perform login
+        """
+        return Packet.build(
+            b'USER@\x00\x00\x00',
+            b'MAC=$000000000000\nSKU=125170\nLKEY=' + lkey + b'\nNAME=\nTID=' + tid
+        )
+
+    @staticmethod
+    def build_llst_packet(tid: bytes) -> Packet:
+        """
+        Build the llst/lobby list packet
+        :param tid: Transaction id
+        :return: Complete packet to list all available game lobbies
+        """
+        return Packet.build(
+            b'LLST@\x00\x00\x00',
+            b'FILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\nFILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\n'
+            b'FAV-PLAYER=\nFAV-GAME=\nFAV-PLAYER-UID=\nFAV-GAME-UID=\nTID=' + tid
+        )
+
+    @staticmethod
+    def build_glst_packet(tid: bytes, lid: bytes) -> Packet:
+        """
+        Build the glst/game (server) list packet
+        :param tid: Transaction id
+        :param lid: Id of lobby to retrieve games from
+        :return: Complete packet to list all available game servers in lobby
+        """
+        return Packet.build(
+            b'GLST@\x00\x00\x00',
+            b'LID=' + lid + b'\nTYPE=\nFILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\n'
+            b'FILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\nFAV-PLAYER=\nFAV-GAME=\nCOUNT=-1\nFAV-PLAYER-UID=\n'
+            b'FAV-GAME-UID=\nTID=' + tid
+        )
+
+    @staticmethod
+    def build_gdat_packet(tid: bytes, lid: bytes, gid: bytes) -> Packet:
+        """
+        Build the gdat/game (server) detailed data packet
+        :param tid: Transaction id
+        :param lid: Id of lobby the game server is hosted in
+        :param gid: Id of the game server
+        :return: Complete packet to retrieve detailed data for the game server
+        """
+        return Packet.build(
+            b'GDAT@\x00\x00\x00',
+            b'LID=' + lid + b'\nGID=' + gid + b'\nTID=' + tid
+        )
+
