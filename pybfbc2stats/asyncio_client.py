@@ -4,7 +4,7 @@ from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
     TheaterStep
-from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
+from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsAuthError
 from .packet import Packet
 
 
@@ -79,7 +79,7 @@ class AsyncFeslClient(AsyncClient):
 
         response_valid, error_message = FeslClient.is_valid_login_response(response)
         if not response_valid:
-            raise PyBfbc2StatsLoginError(error_message)
+            raise PyBfbc2StatsAuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
 
@@ -245,7 +245,8 @@ class AsyncTheaterClient(AsyncClient):
 
         response = await self.connection.read()
 
-        # TODO: Check if response is valid
+        if not TheaterClient.is_valid_authentication_response(response):
+            raise PyBfbc2StatsAuthError('Theater authentication failed')
 
         self.completed_steps[TheaterStep.user] = response
 

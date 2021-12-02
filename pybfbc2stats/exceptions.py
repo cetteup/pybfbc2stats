@@ -10,7 +10,7 @@ class PyBfbc2StatsTimeoutError(PyBfbc2StatsError):
     pass
 
 
-class PyBfbc2StatsLoginError(PyBfbc2StatsError):
+class PyBfbc2StatsAuthError(PyBfbc2StatsError):
     pass
 
 

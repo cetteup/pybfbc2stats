@@ -6,7 +6,7 @@ from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
 from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
-    PyBfbc2StatsSearchError, PyBfbc2StatsLoginError
+    PyBfbc2StatsSearchError, PyBfbc2StatsAuthError
 from .packet import Packet
 
 
@@ -104,7 +104,7 @@ class FeslClient(Client):
 
         response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
-            raise PyBfbc2StatsLoginError(error_message)
+            raise PyBfbc2StatsAuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
 
@@ -492,7 +492,8 @@ class TheaterClient(Client):
 
         response = self.connection.read()
 
-        # TODO: Check if response is valid
+        if not self.is_valid_authentication_response(response):
+            raise PyBfbc2StatsAuthError('Theater authentication failed')
 
         self.completed_steps[TheaterStep.user] = response
 
@@ -661,3 +662,6 @@ class TheaterClient(Client):
             b'LID=' + lid + b'\nGID=' + gid + b'\nTID=' + tid
         )
 
+    @staticmethod
+    def is_valid_authentication_response(response: Packet) -> bool:
+        return b'NAME=' in response.body
