@@ -36,15 +36,16 @@ The following examples show how to find a player/persona by name and retrieve th
 ```python
 from urllib.parse import quote
 
-from pybfbc2stats import Client, Platform, Namespace
+from pybfbc2stats import FeslClient, Platform, Namespace
 
 
 async def main():
-    with Client('ea_account_name', 'ea_account_password', Platform.pc) as client:
+    with FeslClient('ea_account_name', 'ea_account_password', Platform.pc) as client:
         quoted_name = quote('Krut0r')
         persona = client.lookup_username(quoted_name, Namespace.pc)
         stats = client.get_stats(int(persona['userId']))
         print(stats)
+
 
 if __name__ == '__main__':
     main()
@@ -56,15 +57,16 @@ if __name__ == '__main__':
 import asyncio
 from urllib.parse import quote
 
-from pybfbc2stats import AsyncClient, Platform, Namespace
+from pybfbc2stats import AsyncFeslClient, Platform, Namespace
 
 
 async def main():
-    async with AsyncClient('ea_account_name', 'ea_account_password', Platform.pc) as client:       
+    async with AsyncFeslClient('ea_account_name', 'ea_account_password', Platform.pc) as client:
         quoted_name = quote('Krut0r')
         persona = await client.lookup_username(quoted_name, Namespace.pc)
         stats = await client.get_stats(int(persona['userId']))
         print(stats)
+
 
 if __name__ == '__main__':
     asyncio.run(main())
@@ -74,7 +76,7 @@ if __name__ == '__main__':
 
 Both the default and the async clients offer the same methods with the same signatures.
 
-#### \[Async\]Client(username, password, platform, timeout)
+#### \[Async\]FeslClient(username, password, platform, timeout)
 
 Create a new [Async]Client instance.
 
@@ -91,31 +93,31 @@ Create a new [Async]Client instance.
 
 ----
 
-#### \[Async\]Client.hello()
+#### \[Async\]FeslClient.hello()
 
 Send the initial "hello" packet to the FESL server.
 
 ---
 
-#### \[Async\]Client.memcheck()
+#### \[Async\]FeslClient.memcheck()
 
 Send the response to the FESL server's "memcheck" challenge.
 
 ----
 
-#### \[Async\]Client.login()
+#### \[Async\]FeslClient.login()
 
 Send the login details to the FESL server.
 
 ----
 
-#### \[Async\]Client.get_lkey()
+#### \[Async\]FeslClient.get_lkey()
 
 Get the login key (lkey) used to authenticate on theater backend.
 
 ----
 
-#### \[Async\]Client.lookup_usernames(usernames, namespace)
+#### \[Async\]FeslClient.lookup_usernames(usernames, namespace)
 
 Lookup a list of **url encoded/quoted** usernames and return any matching personas (only exact name matches are returned).
 
@@ -133,9 +135,9 @@ Lookup a list of **url encoded/quoted** usernames and return any matching person
 ```python
 from urllib.parse import quote
 
-from pybfbc2stats import Client, Platform, Namespace
+from pybfbc2stats import FeslClient, Platform, Namespace
 
-client = Client('ea_account_name', 'ea_account_password', Platform.pc)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 names = ['SickLittleMonkey', '[SuX] DeLuXe']
 quoted = [quote(name) for name in names]
 persona = client.lookup_usernames(quoted, Namespace.pc)
@@ -143,7 +145,7 @@ persona = client.lookup_usernames(quoted, Namespace.pc)
 
 ----
 
-#### \[Async\]Client.lookup_username(username, namespace)
+#### \[Async\]FeslClient.lookup_username(username, namespace)
 
 Lookup a single **url encoded/quoted** username and return any matching persona (only exact name matches are returned).
 
@@ -161,15 +163,15 @@ Lookup a single **url encoded/quoted** username and return any matching persona 
 ```python
 from urllib.parse import quote
 
-from pybfbc2stats import Client, Platform, Namespace
+from pybfbc2stats import FeslClient, Platform, Namespace
 
-client = Client('ea_account_name', 'ea_account_password', Platform.ps3)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.ps3)
 persona = client.lookup_username(quote('Major Brainhurt'), Namespace.pc)
 ```
 
 ----
 
-#### \[Async\]Client.lookup_user_ids(user_ids, namespace)
+#### \[Async\]FeslClient.lookup_user_ids(user_ids, namespace)
 
 Lookup a list of user ids and return any matching personas.
 
@@ -185,15 +187,15 @@ Lookup a list of user ids and return any matching personas.
 **Example**
 
 ```python
-from pybfbc2stats import Client, Platform, Namespace
+from pybfbc2stats import FeslClient, Platform, Namespace
 
-client = Client('ea_account_name', 'ea_account_password', Platform.pc)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 persona = client.lookup_user_ids([232302860, 233866102], Namespace.xbox360)
 ```
 
 ----
 
-#### \[Async\]Client.lookup_user_id(user_id, namespace)
+#### \[Async\]FeslClient.lookup_user_id(user_id, namespace)
 
 Lookup a single user id and return any matching persona.
 
@@ -209,15 +211,15 @@ Lookup a single user id and return any matching persona.
 **Example**
 
 ```python
-from pybfbc2stats import Client, Platform, Namespace
+from pybfbc2stats import FeslClient, Platform, Namespace
 
-client = Client('ea_account_name', 'ea_account_password', Platform.pc)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 persona = client.lookup_user_id(232302860, Namespace.xbox360)
 ```
 
 ----
 
-#### \[Async\]Client.search_name(screen_name, namespace)
+#### \[Async\]FeslClient.search_name(screen_name, namespace)
 
 Find personas given a **url encoded/quoted** (partial) name. You can use `*` as a trailing wildcard.
 
@@ -235,15 +237,15 @@ Find personas given a **url encoded/quoted** (partial) name. You can use `*` as 
 ```python
 from urllib.parse import quote
 
-from pybfbc2stats import Client, Platform
+from pybfbc2stats import FeslClient, Platform
 
-client = Client('ea_account_name', 'ea_account_password', Platform.pc)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 results = client.search_name(quote('[=BL=] larryp11'))
 ```
 
 ----
 
-#### \[Async\]Client.get_stats(userid, keys)
+#### \[Async\]FeslClient.get_stats(userid, keys)
 
 Retrieve a given list of stats attributes for a given player id on the client instance's platform.
 
@@ -257,15 +259,15 @@ Retrieve a given list of stats attributes for a given player id on the client in
 **Example**
 
 ```python
-from pybfbc2stats import Client, Platform
+from pybfbc2stats import FeslClient, Platform
 
-client = Client('ea_account_name', 'ea_account_password', Platform.ps3)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.ps3)
 stats = client.get_stats(223789857, [b'accuracy', b'kills', b'deaths', b'score', b'time'])
 ```
 
 ----
 
-#### \[Async\]Client.get_leaderboard(min_rank, max_rank, sort_by, keys)
+#### \[Async\]FeslClient.get_leaderboard(min_rank, max_rank, sort_by, keys)
 
 Retrieve a given range of players on the leaderboard with the given list of stats, sorted by a given key, on the client instance's platform.
 
@@ -283,8 +285,8 @@ Retrieve a given range of players on the leaderboard with the given list of stat
 **Example**
 
 ```python
-from pybfbc2stats import Client, Platform
+from pybfbc2stats import FeslClient, Platform
 
-client = Client('ea_account_name', 'ea_account_password', Platform.pc)
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.pc)
 leaderboard = client.get_leaderboard(1, 50, b'time')
 ```
