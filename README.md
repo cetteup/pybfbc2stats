@@ -117,6 +117,12 @@ Get the login key (lkey) used to authenticate on theater backend.
 
 ----
 
+#### \[Async\]FeslClient.get_theater_details()
+
+Get the hostname and port of the theater backend for the client's platform.
+
+----
+
 #### \[Async\]FeslClient.lookup_usernames(usernames, namespace)
 
 Lookup a list of **url encoded/quoted** usernames and return any matching personas (only exact name matches are returned).
