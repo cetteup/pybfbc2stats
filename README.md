@@ -39,7 +39,7 @@ from urllib.parse import quote
 from pybfbc2stats import FeslClient, Platform, Namespace
 
 
-async def main():
+def main():
     with FeslClient('ea_account_name', 'ea_account_password', Platform.pc) as client:
         quoted_name = quote('Krut0r')
         persona = client.lookup_username(quoted_name, Namespace.pc)
