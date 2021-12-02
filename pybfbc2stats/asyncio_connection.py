@@ -123,7 +123,7 @@ class AsyncConnection(Connection):
         return buffer
 
     async def open_connection(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        return await asyncio.open_connection(sock=self.sock, server_hostname=self.host)
+        return await asyncio.open_connection(sock=self.sock)
 
     def __del__(self):
         pass
