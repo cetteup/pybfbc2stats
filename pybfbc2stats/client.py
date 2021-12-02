@@ -18,17 +18,13 @@ class Client:
     connection: Connection
     completed_steps: Dict[Step, Packet]
 
-    def __init__(self, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
+    def __init__(self, connection: Connection, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
         self.platform = platform
+        self.track_steps = track_steps
+        self.connection = connection
         # Using the client with too short of a timeout leads to lots if issues with reads timing out and subsequent
         # reads then reading data from the previous "request" => enforce minimum timeout of 2 seconds
-        self.timeout = max(timeout, 2.0)
-        self.track_steps = track_steps
-        self.connection = Connection(
-            FESL_DETAILS[self.platform]['host'],
-            FESL_DETAILS[self.platform]['port'],
-            timeout
-        )
+        self.connection.timeout = max(timeout, 2.0)
         self.completed_steps = {}
 
     def __enter__(self):
@@ -62,14 +58,13 @@ class FeslClient(Client):
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        super().__init__(platform, timeout, track_steps)
+        connection = SecureConnection(
+            BACKEND_DETAILS[platform]['host'],
+            BACKEND_DETAILS[platform]['port']
+        )
+        super().__init__(connection, platform, timeout, track_steps)
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
-        self.connection = SecureConnection(
-            FESL_DETAILS[self.platform]['host'],
-            FESL_DETAILS[self.platform]['port'],
-            timeout
-        )
 
     def __exit__(self, *excinfo):
         self.logout()

@@ -9,13 +9,8 @@ from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsLoginError
 class AsyncClient(Client):
     connection: AsyncConnection
 
-    def __init__(self, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
-        super().__init__(platform, timeout, track_steps)
-        self.connection = AsyncConnection(
-            FESL_DETAILS[self.platform]['host'],
-            FESL_DETAILS[self.platform]['port'],
-            timeout
-        )
+    def __init__(self, connection: AsyncConnection, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
+        super().__init__(connection, platform, timeout, track_steps)
 
     async def __aenter__(self):
         return self
@@ -31,14 +26,14 @@ class AsyncFeslClient(AsyncClient):
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        super().__init__(platform, timeout, track_steps)
-        self.username = username.encode('utf8')
-        self.password = password.encode('utf8')
-        self.connection = AsyncSecureConnection(
-            FESL_DETAILS[self.platform]['host'],
-            FESL_DETAILS[self.platform]['port'],
+        connection = AsyncSecureConnection(
+            BACKEND_DETAILS[platform]['host'],
+            BACKEND_DETAILS[platform]['port'],
             timeout
         )
+        super().__init__(connection, platform, timeout, track_steps)
+        self.username = username.encode('utf8')
+        self.password = password.encode('utf8')
 
     async def __aenter__(self):
         return self
@@ -51,7 +46,7 @@ class AsyncFeslClient(AsyncClient):
         if self.track_steps and Step.hello in self.completed_steps:
             return bytes(self.completed_steps[Step.hello])
 
-        hello_packet = FeslClient.build_hello_packet(FESL_DETAILS[self.platform]['clientString'])
+        hello_packet = FeslClient.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
