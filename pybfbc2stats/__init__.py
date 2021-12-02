@@ -11,7 +11,7 @@ pybfbc2stats.
 Simple Python library for retrieving statistics of Battlefield: Bad Company 2 players.
 """
 
-__version__ = '0.2.8'
+__version__ = '0.3.0'
 __author__ = 'cetteup'
 __credits__ = 'nemo, Luigi Auriemma'
 __all__ = ['Connection', 'SecureConnection', 'FeslClient', 'TheaterClient',
