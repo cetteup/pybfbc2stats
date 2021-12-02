@@ -78,7 +78,7 @@ class Packet:
         b) followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
         c) followed by \x00\x00
         """
-        valid = header[:4] in VALID_HEADER_TYPES and header[4] in [176, 128] and header[5:7] == b'\x00\x00'
+        valid = header[:4] in VALID_HEADER_TYPES and header[4] in [0, 128, 176] and header[5:7] == b'\x00\x00'
         if not valid:
             raise PyBfbc2StatsError('Packet header is not valid')
 
