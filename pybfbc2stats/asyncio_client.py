@@ -107,7 +107,7 @@ class AsyncFeslClient(AsyncClient):
         parsed = self.parse_simple_response(packet)
 
         # Field is called "ip" but actually contains the hostname
-        return parsed['theaterIp'], parsed['theaterPort']
+        return parsed['theaterIp'], int(parsed['theaterPort'])
 
     async def get_lkey(self) -> str:
         if self.track_steps and Step.login not in self.completed_steps:
