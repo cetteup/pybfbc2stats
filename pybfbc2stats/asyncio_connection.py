@@ -5,7 +5,7 @@ import time
 from typing import Tuple
 
 from .connection import Connection, SecureConnection
-from .constants import HEADER_LENGTH
+from .constants import HEADER_LENGTH, HEADER_ONLY_PACKET_HEADERS
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
 from .packet import Packet
 
@@ -75,23 +75,29 @@ class AsyncConnection(Connection):
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
 
-        # Read remaining data as body until "eof" indicator (\x00)
-        logging.debug('Reading packet body')
-        body = b''
-        receive_next = True
-        last_received = time.time()
-        timed_out = False
-        while receive_next and not timed_out:
-            iteration_buffer = await self.read_safe_until(b'\x00')
-            body += iteration_buffer
+        # Theater sends PING packets that do not have a body,
+        # so skip body read for those in order to not read any data from the next packet
+        if header not in HEADER_ONLY_PACKET_HEADERS:
+            # Read remaining data as body until "eof" indicator (\x00)
+            logging.debug('Reading packet body')
+            body = b''
+            receive_next = True
+            last_received = time.time()
+            timed_out = False
+            while receive_next and not timed_out:
+                iteration_buffer = await self.read_safe_until(b'\x00')
+                body += iteration_buffer
 
-            # Update timestamp if any data was retrieved during current iteration
-            if len(iteration_buffer) > 0:
-                last_received = time.time()
-            receive_next = len(body) == 0 or body[-1] != 0
-            timed_out = time.time() > last_received + self.timeout
+                # Update timestamp if any data was retrieved during current iteration
+                if len(iteration_buffer) > 0:
+                    last_received = time.time()
+                receive_next = len(body) == 0 or body[-1] != 0
+                timed_out = time.time() > last_received + self.timeout
 
-        logging.debug(body)
+            logging.debug(body)
+        else:
+            logging.debug('Received header only packet, not reading any body data')
+            body = b''
 
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')

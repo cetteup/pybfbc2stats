@@ -56,7 +56,7 @@ class Packet:
         """
         Get packet data (body without any trailing \x00 byte)
         """
-        return self.body[:-1]
+        return self.body[:-1] if len(self.body) > 0 and self.body[-1] == 0 else self.body
 
     def get_data_lines(self) -> List[bytes]:
         """
