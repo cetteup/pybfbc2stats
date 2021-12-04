@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional
 
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
@@ -21,11 +21,9 @@ class AsyncClient(Client):
         await self.connection.close()
 
 
-class AsyncFeslClient(AsyncClient):
-    username: bytes
-    password: bytes
+
+class AsyncFeslClient(FeslClient, AsyncClient):
     connection: AsyncSecureConnection
-    completed_steps: Dict[FeslStep, Packet]
 
     def __init__(self, username: str, password: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
@@ -34,7 +32,13 @@ class AsyncFeslClient(AsyncClient):
             BACKEND_DETAILS[platform]['port'],
             timeout
         )
-        super().__init__(connection, platform, timeout, track_steps)
+        """
+        Multiple inheritance works here, but only if we "skip" the FeslClient constructor. The method resolution here
+        is: AsyncFeslClient, FeslClient, AsyncClient, Client. So, by calling super(), we would call the FeslClient
+        __init__ function with parameters that make no sense. If we instead use super(FeslClient, self), we call
+        FeslClient's super directly - effectively skipping the FeslClient constructor
+        """
+        super(FeslClient, self).__init__(connection, platform, timeout, track_steps)
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
 
@@ -49,7 +53,7 @@ class AsyncFeslClient(AsyncClient):
         if self.track_steps and FeslStep.hello in self.completed_steps:
             return bytes(self.completed_steps[FeslStep.hello])
 
-        hello_packet = FeslClient.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
+        hello_packet = self.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -64,7 +68,7 @@ class AsyncFeslClient(AsyncClient):
         return bytes(response)
 
     async def memcheck(self) -> None:
-        memcheck_packet = FeslClient.build_memcheck_packet()
+        memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
 
     async def login(self) -> bytes:
@@ -73,11 +77,11 @@ class AsyncFeslClient(AsyncClient):
         elif self.track_steps and FeslStep.hello not in self.completed_steps:
             await self.hello()
 
-        login_packet = FeslClient.build_login_packet(self.username, self.password)
+        login_packet = self.build_login_packet(self.username, self.password)
         await self.connection.write(login_packet)
         response = await self.connection.read()
 
-        response_valid, error_message = FeslClient.is_valid_login_response(response)
+        response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
             raise PyBfbc2StatsAuthError(error_message)
 
@@ -88,13 +92,13 @@ class AsyncFeslClient(AsyncClient):
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.track_steps and FeslStep.login in self.completed_steps:
-            logout_packet = FeslClient.build_logout_packet()
+            logout_packet = self.build_logout_packet()
             await self.connection.write(logout_packet)
             self.completed_steps.clear()
             return bytes(await self.connection.read())
 
     async def ping(self) -> None:
-        ping_packet = FeslClient.build_ping_packet()
+        ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
 
     async def get_theater_details(self) -> Tuple[str, int]:
@@ -134,7 +138,7 @@ class AsyncFeslClient(AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        lookup_packet = FeslClient.build_user_lookup_packet(identifiers, namespace, lookup_type)
+        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
         parsed_response, *_ = await self.get_list_response(b'userInfo.')
@@ -152,18 +156,18 @@ class AsyncFeslClient(AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        search_packet = FeslClient.build_search_packet(screen_name, namespace)
+        search_packet = self.build_search_packet(screen_name, namespace)
         await self.connection.write(search_packet)
 
         parsed_response, metadata = await self.get_list_response(b'users.')
-        return FeslClient.format_search_response(parsed_response, metadata)
+        return self.format_search_response(parsed_response, metadata)
 
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
         # Send query in chunks
-        chunk_packets = FeslClient.build_stats_query_packets(userid, keys)
+        chunk_packets = self.build_stats_query_packets(userid, keys)
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
@@ -175,7 +179,7 @@ class AsyncFeslClient(AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        leaderboard_packet = FeslClient.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
         parsed_response, *_ = await self.get_list_response(b'stats.')
@@ -195,21 +199,18 @@ class AsyncFeslClient(AsyncClient):
                 # Respond to ping
                 await self.ping()
             else:
-                data, last_packet = FeslClient.handle_list_response_packet(packet, list_entry_prefix)
+                data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
                 response += data
 
-        return FeslClient.parse_list_response(response, list_entry_prefix)
+        return self.parse_list_response(response, list_entry_prefix)
 
 
-class AsyncTheaterClient(AsyncClient):
-    lkey: bytes
-    transaction_id: int = 0
-    completed_steps: Dict[TheaterStep, Packet]
-
+class AsyncTheaterClient(TheaterClient, AsyncClient):
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         connection = AsyncConnection(host, port)
-        super().__init__(connection, platform, timeout, track_steps)
+        # "Skip" TheaterClient constructor, for details see note in AsyncFeslClient.__init__
+        super(TheaterClient, self).__init__(connection, platform, timeout, track_steps)
         self.lkey = lkey.encode('utf8')
 
     async def connect(self) -> bytes:
@@ -221,7 +222,7 @@ class AsyncTheaterClient(AsyncClient):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
-        connect_packet = TheaterClient.build_conn_paket(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        connect_packet = self.build_conn_paket(tid, BACKEND_DETAILS[self.platform]['clientString'])
         await self.connection.write(connect_packet)
 
         response = await self.connection.read()
@@ -240,12 +241,12 @@ class AsyncTheaterClient(AsyncClient):
             await self.connect()
 
         tid = self.get_transaction_id()
-        auth_packet = TheaterClient.build_user_packet(tid, self.lkey)
+        auth_packet = self.build_user_packet(tid, self.lkey)
         await self.connection.write(auth_packet)
 
         response = await self.connection.read()
 
-        if not TheaterClient.is_valid_authentication_response(response):
+        if not self.is_valid_authentication_response(response):
             raise PyBfbc2StatsAuthError('Theater authentication failed')
 
         self.completed_steps[TheaterStep.user] = response
@@ -261,7 +262,7 @@ class AsyncTheaterClient(AsyncClient):
             await self.authenticate()
 
         tid = self.get_transaction_id()
-        lobby_list_packet = TheaterClient.build_llst_packet(tid)
+        lobby_list_packet = self.build_llst_packet(tid)
         await self.connection.write(lobby_list_packet)
 
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
@@ -289,7 +290,7 @@ class AsyncTheaterClient(AsyncClient):
             await self.authenticate()
 
         tid = self.get_transaction_id()
-        server_list_packet = TheaterClient.build_glst_packet(tid, str(lobby_id).encode('utf8'))
+        server_list_packet = self.build_glst_packet(tid, str(lobby_id).encode('utf8'))
         await self.connection.write(server_list_packet)
 
         # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
@@ -318,7 +319,7 @@ class AsyncTheaterClient(AsyncClient):
             await self.authenticate()
 
         tid = self.get_transaction_id()
-        server_details_packet = TheaterClient.build_gdat_packet(
+        server_details_packet = self.build_gdat_packet(
             tid,
             str(lobby_id).encode('utf8'),
             str(game_id).encode('utf8')
