@@ -8,7 +8,7 @@ from .exceptions import PyBfbc2StatsError, PyBfbc2StatsTimeoutError, PyBfbc2Stat
 
 """
 pybfbc2stats.
-Simple Python library for retrieving statistics of Battlefield: Bad Company 2 players.
+Python library for retrieving statistics of Battlefield: Bad Company 2 players.
 """
 
 __version__ = '0.3.1'
