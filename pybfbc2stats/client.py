@@ -1,5 +1,5 @@
 from base64 import b64encode, b64decode
-from typing import List, Union, Dict, Tuple, Optional
+from typing import List, Union, Dict, Tuple, Optional, Callable
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .connection import SecureConnection, Connection
@@ -31,6 +31,29 @@ class Client:
 
     def __exit__(self, *excinfo):
         self.connection.close()
+
+    def wrapped_read(self) -> Packet:
+        """
+        Read a single packet from the connection and automatically respond plus read next packet if the initial packet
+        was one that requires an immediate response (memcheck, ping)
+        :return: A packet containing "real" data
+        """
+        initial_packet = self.connection.read()
+
+        # Check packet is not a "real" data packet but one that prompts a response (memcheck, ping)
+        auto_respond, handler = self.is_auto_respond_packet(initial_packet)
+        if auto_respond:
+            # Call auto respond handler
+            handler()
+            # Call self to read another packet
+            data_packet = self.wrapped_read()
+        else:
+            data_packet = initial_packet
+
+        return data_packet
+
+    def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
+        pass
 
     @staticmethod
     def parse_simple_response(packet: Packet) -> dict:
@@ -100,7 +123,7 @@ class FeslClient(Client):
 
         login_packet = self.build_login_packet(self.username, self.password)
         self.connection.write(login_packet)
-        response = self.connection.read()
+        response = self.wrapped_read()
 
         response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
@@ -115,7 +138,7 @@ class FeslClient(Client):
             logout_packet = self.build_logout_packet()
             self.connection.write(logout_packet)
             self.completed_steps.clear()
-            return bytes(self.connection.read())
+            return bytes(self.wrapped_read())
 
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -207,20 +230,26 @@ class FeslClient(Client):
         return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
+    def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
+        is_auto_respond_packet, handler = False, None
+
+        # Check if packet is a memcheck/ping prompt
+        if b'TXN=MemCheck' in packet.body:
+            is_auto_respond_packet = True
+            handler = self.memcheck
+        elif b'TXN=Ping' in packet.body:
+            is_auto_respond_packet = True
+            handler = self.ping
+
+        return is_auto_respond_packet, handler
+
     def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = self.connection.read()
-            if b'TXN=MemCheck' in packet.body:
-                # Respond to memcheck
-                self.memcheck()
-            elif b'TXN=Ping' in packet.body:
-                # Respond to ping
-                self.ping()
-            else:
-                data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
-                response += data
+            packet = self.wrapped_read()
+            data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
+            response += data
 
         return self.parse_list_response(response, list_entry_prefix)
 
@@ -499,6 +528,10 @@ class TheaterClient(Client):
 
         return bytes(response)
 
+    def ping(self) -> None:
+        ping_packet = self.build_ping_packet()
+        self.connection.write(ping_packet)
+
     def get_lobbies(self) -> List[dict]:
         """
         Retrieve all available game (server) lobbies
@@ -513,14 +546,14 @@ class TheaterClient(Client):
 
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
         # followed by n LDAT packets with the lobby details
-        llst_response = self.connection.read()
+        llst_response = self.wrapped_read()
         llst = self.parse_simple_response(llst_response)
         num_lobbies = int(llst['NUM-LOBBIES'])
 
         # Retrieve given number of lobbies (usually just one these days)
         lobbies = []
         for i in range(num_lobbies):
-            ldat_response = self.connection.read()
+            ldat_response = self.wrapped_read()
             ldat = self.parse_simple_response(ldat_response)
             lobbies.append(ldat)
 
@@ -541,14 +574,14 @@ class TheaterClient(Client):
 
         # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
         # in the lobby. It then sends one GDAT packet per game/server
-        glst_response = self.connection.read()
+        glst_response = self.wrapped_read()
         glst = self.parse_simple_response(glst_response)
         num_games = int(glst['LOBBY-NUM-GAMES'])
 
         # Retrieve GDAT for all servers
         servers = []
         for i in range(num_games):
-            gdat_response = self.connection.read()
+            gdat_response = self.wrapped_read()
             gdat = self.parse_simple_response(gdat_response)
             servers.append(gdat)
 
@@ -570,9 +603,9 @@ class TheaterClient(Client):
 
         # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
         # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
-        gdat_response = self.connection.read()
+        gdat_response = self.wrapped_read()
         gdat = self.parse_simple_response(gdat_response)
-        gdet_response = self.connection.read()
+        gdet_response = self.wrapped_read()
         gdet = self.parse_simple_response(gdet_response)
 
         # Determine number of active players (AP)
@@ -580,7 +613,7 @@ class TheaterClient(Client):
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
-            pdat_response = self.connection.read()
+            pdat_response = self.wrapped_read()
             pdat = self.parse_simple_response(pdat_response)
             players.append(pdat)
 
@@ -593,6 +626,16 @@ class TheaterClient(Client):
         """
         self.transaction_id += 1
         return str(self.transaction_id).encode('utf8')
+
+    def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
+        is_auto_respond_packet, handler = False, None
+
+        # Check if packet is a ping prompt
+        if packet.header.startswith(b'PING'):
+            is_auto_respond_packet = True
+            handler = self.ping
+
+        return is_auto_respond_packet, handler
 
     @staticmethod
     def build_conn_paket(tid: bytes, client_string: bytes) -> Packet:
@@ -618,6 +661,17 @@ class TheaterClient(Client):
         return Packet.build(
             b'USER@\x00\x00\x00',
             b'MAC=$000000000000\nSKU=125170\nLKEY=' + lkey + b'\nNAME=\nTID=' + tid
+        )
+
+    @staticmethod
+    def build_ping_packet() -> Packet:
+        """
+        Build a ping response packet
+        :return: Complete packet to respond to ping with
+        """
+        return Packet.build(
+            b'PING\x00\x00\x00\x00',
+            b'TID=0'
         )
 
     @staticmethod
