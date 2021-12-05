@@ -4,7 +4,7 @@ import time
 from typing import Tuple
 
 from .connection import Connection, SecureConnection
-from .constants import HEADER_LENGTH, HEADER_ONLY_PACKET_HEADERS
+from .constants import HEADER_LENGTH
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
 from .logger import logger
 from .packet import Packet
@@ -56,71 +56,56 @@ class AsyncConnection(Connection):
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
 
+        # Init empty packet
+        packet = Packet()
+
         # Read header only first
         logger.debug('Reading packet header')
-        header = b''
         last_received = time.time()
         timed_out = False
-        while len(header) < HEADER_LENGTH and not timed_out:
-            iteration_buffer = await self.read_safe(HEADER_LENGTH - len(header))
-            header += iteration_buffer
+        while len(packet.header) < HEADER_LENGTH and not timed_out:
+            iteration_buffer = await self.read_safe(HEADER_LENGTH - len(packet.header))
+            packet.header += iteration_buffer
 
             # Update timestamp if any data was retrieved during current iteration
             if len(iteration_buffer) > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
 
-        logger.debug(header)
+        logger.debug(packet.header)
+
+        # Make sure packet header is valid (throws exception if invalid)
+        packet.validate_header()
 
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
 
-        # Theater sends PING packets that do not have a body,
-        # so skip body read for those in order to not read any data from the next packet
-        if header not in HEADER_ONLY_PACKET_HEADERS:
-            # Read remaining data as body until "eof" indicator (\x00)
-            logger.debug('Reading packet body')
-            body = b''
-            receive_next = True
-            last_received = time.time()
-            timed_out = False
-            while receive_next and not timed_out:
-                iteration_buffer = await self.read_safe_until(b'\x00')
-                body += iteration_buffer
+        # Read number of bytes indicated by packet header
+        logger.debug('Reading packet body')
+        last_received = time.time()
+        timed_out = False
+        while len(packet.body) < packet.indicated_body_length() and not timed_out:
+            iteration_buffer = await self.read_safe(packet.indicated_body_length() - len(packet.body))
+            packet.body += iteration_buffer
 
-                # Update timestamp if any data was retrieved during current iteration
-                if len(iteration_buffer) > 0:
-                    last_received = time.time()
-                receive_next = len(body) == 0 or body[-1] != 0
-                timed_out = time.time() > last_received + self.timeout
+            # Update timestamp if any data was retrieved during current iteration
+            if len(iteration_buffer) > 0:
+                last_received = time.time()
+            timed_out = time.time() > last_received + self.timeout
 
-            logger.debug(body)
-        else:
-            logger.debug('Received header only packet, not reading any body data')
-            body = b''
+        logger.debug(packet.body)
 
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
 
-        # Init and validate packet (throws exception if invalid)
-        packet = Packet(header, body)
-        packet.validate()
+        # Validate packet body (throws exception if invalid)
+        packet.validate_body()
 
         return packet
 
     async def read_safe(self, buflen: int) -> bytes:
         try:
             buffer = await self.reader.read(buflen)
-        except socket.timeout:
-            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
-        except socket.error:
-            raise PyBfbc2StatsConnectionError('Failed to receive data from server')
-
-        return buffer
-
-    async def read_safe_until(self, separator: bytes) -> bytes:
-        try:
-            buffer = await self.reader.readuntil(separator)
         except socket.timeout:
             raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
         except socket.error:

@@ -1,14 +1,14 @@
 from typing import List
 
 from .exceptions import PyBfbc2StatsError
-from .constants import VALID_HEADER_TYPES
+from .constants import VALID_HEADER_TYPES, HEADER_LENGTH
 
 
 class Packet:
     header: bytes
     body: bytes
 
-    def __init__(self, header: bytes, body: bytes):
+    def __init__(self, header: bytes = b'', body: bytes = b''):
         self.header = header
         self.body = body
 
@@ -48,9 +48,23 @@ class Packet:
         # Update header
         self.header = bytes(header_array)
 
+    def indicated_length(self) -> int:
+        # Make sure the header is valid first
+        self.validate_header()
+        # Sum of the last four header elements indicates the length of the entire packet
+        # => validate indicators match total length of received data
+        return (self.header[8] << 24) + (self.header[9] << 16) + (self.header[10] << 8) + self.header[11]
+
+    def indicated_body_length(self) -> int:
+        """
+        Get length of packet body as indicated by header (total indicated length - header length)
+        :return: Indicated and expected length of packet body
+        """
+        return self.indicated_length() - len(self.header)
+
     def validate(self) -> None:
-        self.validate_header(self.header)
-        self.validate_body(self.header, self.body)
+        self.validate_header()
+        self.validate_body()
 
     def get_data(self) -> bytes:
         """
@@ -70,24 +84,20 @@ class Packet:
     def __bytes__(self):
         return self.header + self.body
 
-    @staticmethod
-    def validate_header(header: bytes) -> None:
+    def validate_header(self) -> None:
         """
         Make sure header
-        a) starts with a valid type (e.g. "rank") which is
-        b) followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
-        c) followed by \x00\x00
+        a) contains 12 bytes
+        b) starts with a valid type (e.g. "rank") which is
+        c) followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
+        d) followed by \x00\x00
         """
-        valid = header[:4] in VALID_HEADER_TYPES and header[4] in [0, 128, 176] and header[5:7] == b'\x00\x00'
+        valid = (len(self.header) == HEADER_LENGTH and self.header[:4] in VALID_HEADER_TYPES and
+                 self.header[4] in [0, 128, 176] and self.header[5:7] == b'\x00\x00')
         if not valid:
             raise PyBfbc2StatsError('Packet header is not valid')
 
-    @staticmethod
-    def validate_body(header: bytes, body: bytes) -> None:
-        # Sum of the last four header elements indicates the length of the entire packet
-        # => validate indicators match total length of received data
-        indicated_packet_length = (header[8] << 24) + (header[9] << 16) + (header[10] << 8) + header[11]
-        actual_packet_length = len(header) + len(body)
-
-        if indicated_packet_length != actual_packet_length:
+    def validate_body(self) -> None:
+        # Validate indicated length matches total length of received data
+        if self.indicated_length() != len(self.header) + len(self.body):
             raise PyBfbc2StatsError('Received packet with invalid body')
