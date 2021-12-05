@@ -1,10 +1,10 @@
-import logging
 import socket
 import ssl
 import time
 
 from .constants import HEADER_LENGTH, HEADER_ONLY_PACKET_HEADERS
 from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
+from .logger import logger
 from .packet import Packet
 
 
@@ -38,9 +38,9 @@ class Connection:
             raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     def write(self, packet: Packet) -> None:
-        logging.debug('Writing to socket')
+        logger.debug('Writing to socket')
         if not self.is_connected:
-            logging.debug('Socket is not connected yet, connecting now')
+            logger.debug('Socket is not connected yet, connecting now')
             self.connect()
 
         try:
@@ -48,16 +48,16 @@ class Connection:
         except socket.error:
             raise PyBfbc2StatsConnectionError('Failed to send data to server')
 
-        logging.debug(packet)
+        logger.debug(packet)
 
     def read(self) -> Packet:
-        logging.debug('Reading from socket')
+        logger.debug('Reading from socket')
         if not self.is_connected:
-            logging.debug('Socket is not connected yet, connecting now')
+            logger.debug('Socket is not connected yet, connecting now')
             self.connect()
 
         # Read header only first
-        logging.debug('Reading packet header')
+        logger.debug('Reading packet header')
         header = b''
         last_received = time.time()
         timed_out = False
@@ -73,13 +73,13 @@ class Connection:
         if timed_out:
             raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
 
-        logging.debug(header)
+        logger.debug(header)
 
         # Theater sends PING packets that do not have a body,
         # so skip body read for those in order to not read any data from the next packet
         if header not in HEADER_ONLY_PACKET_HEADERS:
             # Read remaining data as body until "eof" indicator (\x00)
-            logging.debug('Reading packet body')
+            logger.debug('Reading packet body')
             body = b''
             receive_next = True
             last_received = time.time()
@@ -94,9 +94,9 @@ class Connection:
                 receive_next = len(body) == 0 or body[-1] != 0
                 timed_out = time.time() > last_received + self.timeout
 
-            logging.debug(body)
+            logger.debug(body)
         else:
-            logging.debug('Received header only packet, not reading any body data')
+            logger.debug('Received header only packet, not reading any body data')
             body = b''
 
         if timed_out:
