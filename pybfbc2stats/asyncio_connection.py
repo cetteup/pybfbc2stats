@@ -32,7 +32,7 @@ class AsyncConnection(Connection):
         except socket.timeout:
             self.is_connected = False
             raise PyBfbc2StatsTimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
-        except socket.error as e:
+        except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
             raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
@@ -45,8 +45,8 @@ class AsyncConnection(Connection):
         try:
             self.writer.write(bytes(packet))
             await self.writer.drain()
-        except socket.error:
-            raise PyBfbc2StatsConnectionError('Failed to send data to server')
+        except (socket.error, ConnectionResetError) as e:
+            raise PyBfbc2StatsConnectionError(f'Failed to send data to server ({e})')
 
         logger.debug(packet)
 
@@ -108,8 +108,8 @@ class AsyncConnection(Connection):
             buffer = await self.reader.read(buflen)
         except socket.timeout:
             raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
-        except socket.error:
-            raise PyBfbc2StatsConnectionError('Failed to receive data from server')
+        except (socket.error, ConnectionResetError) as e:
+            raise PyBfbc2StatsConnectionError(f'Failed to receive data from server ({e})')
 
         return buffer
 
