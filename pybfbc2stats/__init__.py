@@ -4,7 +4,8 @@ from .client import FeslClient, TheaterClient
 from .connection import Connection, SecureConnection
 from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import PyBfbc2StatsError, PyBfbc2StatsTimeoutError, PyBfbc2StatsParameterError, \
-    PyBfbc2StatsNotFoundError, PyBfbc2StatsAuthError, PyBfbc2StatsConnectionError, PyBfbc2StatsSearchError
+    PyBfbc2StatsPlayerNotFoundError, PyBfbc2StatsAuthError, PyBfbc2StatsConnectionError, PyBfbc2StatsSearchError, \
+    PyBfbc2StatsNotFoundError, PyBfbc2StatsServerNotFoundError, PyBfbc2StatsLobbyNotFoundError
 
 """
 pybfbc2stats.
@@ -18,4 +19,5 @@ __all__ = ['Connection', 'SecureConnection', 'FeslClient', 'TheaterClient',
            'AsyncConnection', 'AsyncSecureConnection', 'AsyncFeslClient', 'AsyncTheaterClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS',
            'PyBfbc2StatsError', 'PyBfbc2StatsConnectionError', 'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError',
-           'PyBfbc2StatsAuthError', 'PyBfbc2StatsNotFoundError', 'PyBfbc2StatsSearchError']
+           'PyBfbc2StatsAuthError', 'PyBfbc2StatsNotFoundError', 'PyBfbc2StatsPlayerNotFoundError',
+           'PyBfbc2StatsServerNotFoundError', 'PyBfbc2StatsLobbyNotFoundError', 'PyBfbc2StatsSearchError']

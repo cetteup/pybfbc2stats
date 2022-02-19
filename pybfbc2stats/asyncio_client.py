@@ -4,7 +4,7 @@ from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
     TheaterStep
-from .exceptions import PyBfbc2StatsNotFoundError, PyBfbc2StatsAuthError
+from .exceptions import PyBfbc2StatsPlayerNotFoundError, PyBfbc2StatsAuthError
 from .packet import Packet
 
 
@@ -167,7 +167,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
-            raise PyBfbc2StatsNotFoundError('User lookup did not return any results')
+            raise PyBfbc2StatsPlayerNotFoundError('User lookup did not return any results')
 
         return results.pop()
 

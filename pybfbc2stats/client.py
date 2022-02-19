@@ -5,7 +5,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsNotFoundError, \
+from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsPlayerNotFoundError, \
     PyBfbc2StatsSearchError, PyBfbc2StatsAuthError
 from .packet import Packet
 
@@ -191,7 +191,7 @@ class FeslClient(Client):
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
-            raise PyBfbc2StatsNotFoundError('User lookup did not return any results')
+            raise PyBfbc2StatsPlayerNotFoundError('User lookup did not return any results')
 
         return results.pop()
 
@@ -440,7 +440,7 @@ class FeslClient(Client):
             if error_code == b'21':
                 raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
             elif error_code == b'101' and method == b'NuLookupUserInfo':
-                raise PyBfbc2StatsNotFoundError('FESL returned player not found error')
+                raise PyBfbc2StatsPlayerNotFoundError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
                 raise PyBfbc2StatsSearchError('FESL found no or too many results matching the search query')

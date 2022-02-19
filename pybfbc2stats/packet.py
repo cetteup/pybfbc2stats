@@ -1,7 +1,8 @@
 from typing import List
 
-from .exceptions import PyBfbc2StatsError, PyBfbc2StatsNotFoundError
 from .constants import VALID_HEADER_TYPES, HEADER_LENGTH
+from .exceptions import PyBfbc2StatsError, PyBfbc2StatsServerNotFoundError, \
+    PyBfbc2StatsLobbyNotFoundError
 
 
 class Packet:
@@ -99,12 +100,12 @@ class Packet:
             if self.header.startswith(b'GDATngam'):
                 # Theater returns a header starting with b'GDATngam' ("no game?") if the given
                 # lobby_id-game_id combination does not exist
-                raise PyBfbc2StatsNotFoundError('Theater returned server not found error')
+                raise PyBfbc2StatsServerNotFoundError('Theater returned server not found error')
             if self.header.startswith(b'GLSTnrom'):
                 # Theater returns a header starting with b'GLSTnrom' ("no room"?, room=lobby?) if the given
                 # lobby_id does not exist (only applies to retrieving server lists from lobby,
                 # individual server queries return the above b'GDATngam' instead)
-                raise PyBfbc2StatsNotFoundError('Theater returned lobby not found error')
+                raise PyBfbc2StatsLobbyNotFoundError('Theater returned lobby not found error')
             else:
                 # If no specific error could be determined, raise generic exception
                 raise PyBfbc2StatsError('Packet header is not valid')
