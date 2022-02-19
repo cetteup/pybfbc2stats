@@ -1,8 +1,7 @@
 from typing import List
 
-from .constants import VALID_HEADER_TYPES, HEADER_LENGTH
-from .exceptions import Error, ServerNotFoundError, \
-    LobbyNotFoundError
+from .constants import VALID_HEADER_TYPES, HEADER_LENGTH, VALID_HEADER_ERROR_INDICATORS
+from .exceptions import Error
 
 
 class Packet:
@@ -88,27 +87,25 @@ class Packet:
     def validate_header(self) -> None:
         """
         Make sure header
-        a) contains 12 bytes
-        b) starts with a valid type (e.g. "rank") which is
-        c) followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
-        d) followed by \x00\x00
+        and
+          contains 12 bytes
+          starts with a valid type (e.g. "rank") which is
+          or
+            and
+              followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
+              followed by \x00\x00
+            and
+              followed by a valid error indicator (Theater indicates errors in header, not body)
+              followed by \x00\x00\x00
+
+        Theater error response packet headers are treated as valid here because we do need to read their body in order
+        to not leave bytes "on the line". Also, they are not invalid responses just because they indicate an error.
         """
         valid = (len(self.header) == HEADER_LENGTH and self.header[:4] in VALID_HEADER_TYPES and
-                 self.header[4] in [0, 128, 176] and self.header[5:7] == b'\x00\x00')
+                 (self.header[4] in [0, 128, 176] and self.header[5:7] == b'\x00\x00' or
+                  self.header[4:8] in VALID_HEADER_ERROR_INDICATORS and self.header[8:11] == b'\x00\x00\x00'))
         if not valid:
-            # Check for specific errors indicated in header (Theater returns an invalid header [only] upon most errors)
-            if self.header.startswith(b'GDATngam'):
-                # Theater returns a header starting with b'GDATngam' ("no game?") if the given
-                # lobby_id-game_id combination does not exist
-                raise ServerNotFoundError('Theater returned server not found error')
-            if self.header.startswith(b'GLSTnrom'):
-                # Theater returns a header starting with b'GLSTnrom' ("no room"?, room=lobby?) if the given
-                # lobby_id does not exist (only applies to retrieving server lists from lobby,
-                # individual server queries return the above b'GDATngam' instead)
-                raise LobbyNotFoundError('Theater returned lobby not found error')
-            else:
-                # If no specific error could be determined, raise generic exception
-                raise Error('Packet header is not valid')
+            raise Error('Packet header is not valid')
 
     def validate_body(self) -> None:
         # Validate indicated length matches total length of received data

@@ -6,7 +6,7 @@ from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
-    SearchError, AuthError
+    SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError
 from .packet import Packet
 
 
@@ -575,6 +575,10 @@ class TheaterClient(Client):
         # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
         # in the lobby. It then sends one GDAT packet per game/server
         glst_response = self.wrapped_read()
+        # Response may indicate an error if given lobby id does not exist
+        is_error, error = self.is_error_response(glst_response)
+        if is_error:
+            raise error
         glst = self.parse_simple_response(glst_response)
         num_games = int(glst['LOBBY-NUM-GAMES'])
 
@@ -604,6 +608,10 @@ class TheaterClient(Client):
         # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
         # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
         gdat_response = self.wrapped_read()
+        # Response may indicate an error if given lobby id and /or game id do not exist
+        is_error, error = self.is_error_response(gdat_response)
+        if is_error:
+            raise error
         gdat = self.parse_simple_response(gdat_response)
         gdet_response = self.wrapped_read()
         gdet = self.parse_simple_response(gdet_response)
@@ -719,3 +727,18 @@ class TheaterClient(Client):
     @staticmethod
     def is_valid_authentication_response(response: Packet) -> bool:
         return b'NAME=' in response.body
+
+    @staticmethod
+    def is_error_response(response: Packet) -> Tuple[bool, Optional[Error]]:
+        is_error, error = False, None
+        if response.header.startswith(b'GLSTnrom'):
+            # Theater returns a header starting with b'GLSTnrom' ("no room"?, room=lobby?) if the given
+            # lobby_id does not exist (only applies to retrieving server lists from lobby,
+            # individual server queries return the above b'GDATngam' instead)
+            is_error, error = True, LobbyNotFoundError('Theater returned lobby not found error')
+        elif response.header.startswith(b'GDATngam'):
+            # Theater returns a header starting with b'GDATngam' ("no game?") if the given
+            # lobby_id-game_id combination does not exist
+            is_error, error = True, ServerNotFoundError('Theater returned server not found error')
+
+        return is_error, error

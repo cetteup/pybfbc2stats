@@ -38,6 +38,7 @@ DEFAULT_BUFFER_SIZE = 8096
 HEADER_LENGTH = 12
 VALID_HEADER_TYPES = [b'acct', b'fsys', b'rank',
                       b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']
+VALID_HEADER_ERROR_INDICATORS = [b'ngam', b'nrom']
 BACKEND_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',
