@@ -1,38 +1,38 @@
-class PyBfbc2StatsError(Exception):
+class Error(Exception):
     pass
 
 
-class PyBfbc2StatsConnectionError(PyBfbc2StatsError):
+class ConnectionError(Error):
     pass
 
 
-class PyBfbc2StatsTimeoutError(PyBfbc2StatsError):
+class TimeoutError(Error):
     pass
 
 
-class PyBfbc2StatsAuthError(PyBfbc2StatsError):
+class AuthError(Error):
     pass
 
 
-class PyBfbc2StatsParameterError(PyBfbc2StatsError):
+class ParameterError(Error):
     pass
 
 
-class PyBfbc2StatsNotFoundError(PyBfbc2StatsError):
+class NotFoundError(Error):
     pass
 
 
-class PyBfbc2StatsPlayerNotFoundError(PyBfbc2StatsNotFoundError):
+class PlayerNotFoundError(NotFoundError):
     pass
 
 
-class PyBfbc2StatsLobbyNotFoundError(PyBfbc2StatsNotFoundError):
+class LobbyNotFoundError(NotFoundError):
     pass
 
 
-class PyBfbc2StatsServerNotFoundError(PyBfbc2StatsNotFoundError):
+class ServerNotFoundError(NotFoundError):
     pass
 
 
-class PyBfbc2StatsSearchError(PyBfbc2StatsError):
+class SearchError(Error):
     pass

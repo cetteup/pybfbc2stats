@@ -3,9 +3,9 @@ from .asyncio_connection import AsyncConnection, AsyncSecureConnection
 from .client import FeslClient, TheaterClient
 from .connection import Connection, SecureConnection
 from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
-from .exceptions import PyBfbc2StatsError, PyBfbc2StatsTimeoutError, PyBfbc2StatsParameterError, \
-    PyBfbc2StatsPlayerNotFoundError, PyBfbc2StatsAuthError, PyBfbc2StatsConnectionError, PyBfbc2StatsSearchError, \
-    PyBfbc2StatsNotFoundError, PyBfbc2StatsServerNotFoundError, PyBfbc2StatsLobbyNotFoundError
+from .exceptions import Error, TimeoutError, ParameterError, \
+    PlayerNotFoundError, AuthError, ConnectionError, SearchError, \
+    NotFoundError, ServerNotFoundError, LobbyNotFoundError
 
 """
 pybfbc2stats.
@@ -18,6 +18,6 @@ __credits__ = 'nemo, Luigi Auriemma'
 __all__ = ['Connection', 'SecureConnection', 'FeslClient', 'TheaterClient',
            'AsyncConnection', 'AsyncSecureConnection', 'AsyncFeslClient', 'AsyncTheaterClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS',
-           'PyBfbc2StatsError', 'PyBfbc2StatsConnectionError', 'PyBfbc2StatsParameterError', 'PyBfbc2StatsTimeoutError',
-           'PyBfbc2StatsAuthError', 'PyBfbc2StatsNotFoundError', 'PyBfbc2StatsPlayerNotFoundError',
-           'PyBfbc2StatsServerNotFoundError', 'PyBfbc2StatsLobbyNotFoundError', 'PyBfbc2StatsSearchError']
+           'Error', 'ConnectionError', 'ParameterError', 'TimeoutError',
+           'AuthError', 'NotFoundError', 'PlayerNotFoundError',
+           'ServerNotFoundError', 'LobbyNotFoundError', 'SearchError']

@@ -5,7 +5,7 @@ from typing import Tuple
 
 from .connection import Connection, SecureConnection
 from .constants import HEADER_LENGTH
-from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
+from .exceptions import TimeoutError, ConnectionError
 from .logger import logger
 from .packet import Packet
 
@@ -31,10 +31,10 @@ class AsyncConnection(Connection):
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
-            raise PyBfbc2StatsTimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
+            raise TimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
         except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
-            raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
+            raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     async def write(self, packet: Packet) -> None:
         logger.debug('Writing to socket')
@@ -46,7 +46,7 @@ class AsyncConnection(Connection):
             self.writer.write(bytes(packet))
             await self.writer.drain()
         except (socket.error, ConnectionResetError) as e:
-            raise PyBfbc2StatsConnectionError(f'Failed to send data to server ({e})')
+            raise ConnectionError(f'Failed to send data to server ({e})')
 
         logger.debug(packet)
 
@@ -78,7 +78,7 @@ class AsyncConnection(Connection):
         packet.validate_header()
 
         if timed_out:
-            raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
+            raise TimeoutError('Timed out while reading packet header')
 
         # Read number of bytes indicated by packet header
         logger.debug('Reading packet body')
@@ -96,7 +96,7 @@ class AsyncConnection(Connection):
         logger.debug(packet.body)
 
         if timed_out:
-            raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
+            raise TimeoutError('Timed out while reading packet body')
 
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
@@ -108,9 +108,9 @@ class AsyncConnection(Connection):
         try:
             buffer = await asyncio.wait_for(future, self.timeout)
         except (socket.timeout, asyncio.TimeoutError):
-            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
+            raise TimeoutError('Timed out while receiving server data')
         except (socket.error, ConnectionResetError) as e:
-            raise PyBfbc2StatsConnectionError(f'Failed to receive data from server ({e})')
+            raise ConnectionError(f'Failed to receive data from server ({e})')
 
         return buffer
 

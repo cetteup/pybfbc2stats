@@ -5,8 +5,8 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
-from .exceptions import PyBfbc2StatsParameterError, PyBfbc2StatsError, PyBfbc2StatsPlayerNotFoundError, \
-    PyBfbc2StatsSearchError, PyBfbc2StatsAuthError
+from .exceptions import ParameterError, Error, PlayerNotFoundError, \
+    SearchError, AuthError
 from .packet import Packet
 
 
@@ -127,7 +127,7 @@ class FeslClient(Client):
 
         response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
-            raise PyBfbc2StatsAuthError(error_message)
+            raise AuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
 
@@ -191,7 +191,7 @@ class FeslClient(Client):
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
-            raise PyBfbc2StatsPlayerNotFoundError('User lookup did not return any results')
+            raise PlayerNotFoundError('User lookup did not return any results')
 
         return results.pop()
 
@@ -438,17 +438,17 @@ class FeslClient(Client):
             error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
             error_code = error_code_line.split(b'=').pop()
             if error_code == b'21':
-                raise PyBfbc2StatsParameterError('FESL returned invalid parameter error')
+                raise ParameterError('FESL returned invalid parameter error')
             elif error_code == b'101' and method == b'NuLookupUserInfo':
-                raise PyBfbc2StatsPlayerNotFoundError('FESL returned player not found error')
+                raise PlayerNotFoundError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
-                raise PyBfbc2StatsSearchError('FESL found no or too many results matching the search query')
+                raise SearchError('FESL found no or too many results matching the search query')
             else:
-                raise PyBfbc2StatsError(f'FESL returned an error (code {error_code.decode("utf")})')
+                raise Error(f'FESL returned an error (code {error_code.decode("utf")})')
         elif b'data=' not in body and list_entry_prefix + b'[]' not in body:
             # Packet is neither one data packet of a multi-packet response nor a single-packet response
-            raise PyBfbc2StatsError('FESL returned invalid response')
+            raise Error('FESL returned invalid response')
 
         if b'data=' in body:
             # Packet is one of multiple => base64 decode content
@@ -522,7 +522,7 @@ class TheaterClient(Client):
         response = self.connection.read()
 
         if not self.is_valid_authentication_response(response):
-            raise PyBfbc2StatsAuthError('Theater authentication failed')
+            raise AuthError('Theater authentication failed')
 
         self.completed_steps[TheaterStep.user] = response
 

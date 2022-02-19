@@ -3,7 +3,7 @@ import ssl
 import time
 
 from .constants import HEADER_LENGTH
-from .exceptions import PyBfbc2StatsTimeoutError, PyBfbc2StatsConnectionError
+from .exceptions import TimeoutError, ConnectionError
 from .logger import logger
 from .packet import Packet
 
@@ -32,10 +32,10 @@ class Connection:
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
-            raise PyBfbc2StatsTimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
+            raise TimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
         except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
-            raise PyBfbc2StatsConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
+            raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     def write(self, packet: Packet) -> None:
         logger.debug('Writing to socket')
@@ -46,7 +46,7 @@ class Connection:
         try:
             self.sock.sendall(bytes(packet))
         except (socket.error, ConnectionResetError) as e:
-            raise PyBfbc2StatsConnectionError(f'Failed to send data to server ({e})')
+            raise ConnectionError(f'Failed to send data to server ({e})')
 
         logger.debug(packet)
 
@@ -73,7 +73,7 @@ class Connection:
             timed_out = time.time() > last_received + self.timeout
 
         if timed_out:
-            raise PyBfbc2StatsTimeoutError('Timed out while reading packet header')
+            raise TimeoutError('Timed out while reading packet header')
 
         logger.debug(packet.header)
 
@@ -96,7 +96,7 @@ class Connection:
         logger.debug(packet.body)
 
         if timed_out:
-            raise PyBfbc2StatsTimeoutError('Timed out while reading packet body')
+            raise TimeoutError('Timed out while reading packet body')
 
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
@@ -107,9 +107,9 @@ class Connection:
         try:
             buffer = self.sock.recv(buflen)
         except socket.timeout:
-            raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
+            raise TimeoutError('Timed out while receiving server data')
         except (socket.error, ConnectionResetError) as e:
-            raise PyBfbc2StatsConnectionError(f'Failed to receive data from server ({e})')
+            raise ConnectionError(f'Failed to receive data from server ({e})')
 
         return buffer
 
