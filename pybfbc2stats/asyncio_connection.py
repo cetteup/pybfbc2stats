@@ -104,9 +104,10 @@ class AsyncConnection(Connection):
         return packet
 
     async def read_safe(self, buflen: int) -> bytes:
+        future = self.reader.read(buflen)
         try:
-            buffer = await self.reader.read(buflen)
-        except socket.timeout:
+            buffer = await asyncio.wait_for(future, self.timeout)
+        except (socket.timeout, asyncio.TimeoutError):
             raise PyBfbc2StatsTimeoutError('Timed out while receiving server data')
         except (socket.error, ConnectionResetError) as e:
             raise PyBfbc2StatsConnectionError(f'Failed to receive data from server ({e})')
