@@ -45,7 +45,7 @@ class Connection:
 
         try:
             self.sock.sendall(bytes(packet))
-        except (socket.error, ConnectionResetError) as e:
+        except (socket.error, ConnectionResetError, RuntimeError) as e:
             raise ConnectionError(f'Failed to send data to server ({e})')
 
         logger.debug(packet)

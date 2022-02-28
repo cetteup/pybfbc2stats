@@ -45,7 +45,7 @@ class AsyncConnection(Connection):
         try:
             self.writer.write(bytes(packet))
             await self.writer.drain()
-        except (socket.error, ConnectionResetError) as e:
+        except (socket.error, ConnectionResetError, RuntimeError) as e:
             raise ConnectionError(f'Failed to send data to server ({e})')
 
         logger.debug(packet)
