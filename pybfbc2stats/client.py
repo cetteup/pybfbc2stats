@@ -34,7 +34,7 @@ class Client:
     def __exit__(self, *excinfo):
         self.connection.close()
 
-    def wrapped_read(self) -> Packet:
+    def wrapped_read(self, tid: int) -> Packet:
         """
         Read a single packet from the connection and automatically respond plus read next packet if the initial packet
         was one that requires an immediate response (memcheck, ping)
@@ -48,7 +48,10 @@ class Client:
             # Call auto respond handler
             handler()
             # Call self to read another packet
-            data_packet = self.wrapped_read()
+            data_packet = self.wrapped_read(tid)
+        elif initial_packet.get_tid() < tid:
+            # Call self to read another packet if packet is not part of current transaction
+            data_packet = self.wrapped_read(tid)
         else:
             data_packet = initial_packet
 
@@ -136,7 +139,7 @@ class FeslClient(Client):
         tid = self.get_transaction_id()
         login_packet = self.build_login_packet(tid, self.username, self.password)
         self.connection.write(login_packet)
-        response = self.wrapped_read()
+        response = self.wrapped_read(tid)
 
         response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
@@ -152,7 +155,7 @@ class FeslClient(Client):
             logout_packet = self.build_logout_packet(tid)
             self.connection.write(logout_packet)
             self.completed_steps.clear()
-            return bytes(self.wrapped_read())
+            return bytes(self.wrapped_read(tid))
 
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -199,7 +202,7 @@ class FeslClient(Client):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         self.connection.write(lookup_packet)
 
-        parsed_response, *_ = self.get_list_response(b'userInfo.')
+        parsed_response, *_ = self.get_list_response(tid, b'userInfo.')
         return parsed_response
 
     def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
@@ -218,7 +221,7 @@ class FeslClient(Client):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         self.connection.write(search_packet)
 
-        parsed_response, metadata = self.get_list_response(b'users.')
+        parsed_response, metadata = self.get_list_response(tid, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
     def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
@@ -231,7 +234,7 @@ class FeslClient(Client):
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        parsed_response, *_ = self.get_list_response(b'stats.')
+        parsed_response, *_ = self.get_list_response(tid, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -243,7 +246,7 @@ class FeslClient(Client):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        parsed_response, *_ = self.get_list_response(b'stats.')
+        parsed_response, *_ = self.get_list_response(tid, b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
@@ -261,11 +264,11 @@ class FeslClient(Client):
 
         return is_auto_respond_packet, handler
 
-    def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    def get_list_response(self, tid: int, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = self.wrapped_read()
+            packet = self.wrapped_read(tid)
             data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
             response += data
 
@@ -568,14 +571,14 @@ class TheaterClient(Client):
 
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
         # followed by n LDAT packets with the lobby details
-        llst_response = self.wrapped_read()
+        llst_response = self.wrapped_read(tid)
         llst = self.parse_simple_response(llst_response)
         num_lobbies = int(llst['NUM-LOBBIES'])
 
         # Retrieve given number of lobbies (usually just one these days)
         lobbies = []
         for i in range(num_lobbies):
-            ldat_response = self.wrapped_read()
+            ldat_response = self.wrapped_read(tid)
             ldat = self.parse_simple_response(ldat_response)
             lobbies.append(ldat)
 
@@ -596,7 +599,7 @@ class TheaterClient(Client):
 
         # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
         # in the lobby. It then sends one GDAT packet per game/server
-        glst_response = self.wrapped_read()
+        glst_response = self.wrapped_read(tid)
         # Response may indicate an error if given lobby id does not exist
         is_error, error = self.is_error_response(glst_response)
         if is_error:
@@ -607,7 +610,7 @@ class TheaterClient(Client):
         # Retrieve GDAT for all servers
         servers = []
         for i in range(num_games):
-            gdat_response = self.wrapped_read()
+            gdat_response = self.wrapped_read(tid)
             gdat = self.parse_simple_response(gdat_response)
             servers.append(gdat)
 
@@ -629,13 +632,13 @@ class TheaterClient(Client):
 
         # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
         # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
-        gdat_response = self.wrapped_read()
+        gdat_response = self.wrapped_read(tid)
         # Response may indicate an error if given lobby id and /or game id do not exist
         is_error, error = self.is_error_response(gdat_response)
         if is_error:
             raise error
         gdat = self.parse_simple_response(gdat_response)
-        gdet_response = self.wrapped_read()
+        gdet_response = self.wrapped_read(tid)
         gdet = self.parse_simple_response(gdet_response)
 
         # Determine number of active players (AP)
@@ -643,7 +646,7 @@ class TheaterClient(Client):
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
-            pdat_response = self.wrapped_read()
+            pdat_response = self.wrapped_read(tid)
             pdat = self.parse_simple_response(pdat_response)
             players.append(pdat)
 

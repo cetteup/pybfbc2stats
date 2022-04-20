@@ -37,6 +37,9 @@ class Packet:
     def set_tid(self, tid: int) -> None:
         pass
 
+    def get_tid(self) -> int:
+        pass
+
     def set_length_indicators(self) -> None:
         """
         Set/update length indicators in packet header
@@ -125,6 +128,13 @@ class FeslPacket(Packet):
 
         self.header = bytes(header_array)
 
+    def get_tid(self) -> int:
+        """
+        Get transaction id from packet header
+        :return: transaction id as int
+        """
+        return self.bytes2int(self.header[5:8])
+
     def validate_header(self) -> None:
         super().validate_header()
 
@@ -146,6 +156,20 @@ class TheaterPacket(Packet):
         """
         # Remove body "tail", add tid and add "tail" again
         self.body = self.body[:-2] + b'\nTID=' + str(tid).encode('utf8') + b'\n\x00'
+
+    def get_tid(self) -> int:
+        """
+        Get transaction id from packet body
+        :return: transaction id as int
+        """
+        lines = self.get_data_lines()
+        tid_line = next((line for line in lines if b'TID=' in line), b'')
+        tid_bytes = tid_line[4:]
+
+        if not tid_bytes.isalnum():
+            return 0
+
+        return int(tid_bytes)
 
     def validate_header(self) -> None:
         super().validate_header()

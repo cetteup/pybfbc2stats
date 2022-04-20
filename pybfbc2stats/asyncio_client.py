@@ -20,7 +20,7 @@ class AsyncClient(Client):
     async def __aexit__(self, *excinfo):
         await self.connection.close()
 
-    async def wrapped_read(self) -> Packet:
+    async def wrapped_read(self, tid: int) -> Packet:
         """
         Read a single packet from the connection and automatically respond plus read next packet if the initial packet
         was one that requires an immediate response (memcheck, ping)
@@ -34,7 +34,10 @@ class AsyncClient(Client):
             # Call auto respond handler
             await handler()
             # Call self to read another packet
-            data_packet = await self.wrapped_read()
+            data_packet = await self.wrapped_read(tid)
+        elif initial_packet.get_tid() < tid:
+            # Call self to read another packet if packet is not part of current transaction
+            data_packet = await self.wrapped_read(tid)
         else:
             data_packet = initial_packet
 
@@ -101,7 +104,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         tid = self.get_transaction_id()
         login_packet = self.build_login_packet(tid, self.username, self.password)
         await self.connection.write(login_packet)
-        response = await self.wrapped_read()
+        response = await self.wrapped_read(tid)
 
         response_valid, error_message = self.is_valid_login_response(response)
         if not response_valid:
@@ -118,7 +121,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
             logout_packet = self.build_logout_packet(tid)
             await self.connection.write(logout_packet)
             self.completed_steps.clear()
-            return bytes(await self.wrapped_read())
+            return bytes(await self.wrapped_read(tid))
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -165,7 +168,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
-        parsed_response, *_ = await self.get_list_response(b'userInfo.')
+        parsed_response, *_ = await self.get_list_response(tid, b'userInfo.')
         return parsed_response
 
     async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
@@ -184,7 +187,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         await self.connection.write(search_packet)
 
-        parsed_response, metadata = await self.get_list_response(b'users.')
+        parsed_response, metadata = await self.get_list_response(tid, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
@@ -197,7 +200,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        parsed_response, *_ = await self.get_list_response(b'stats.')
+        parsed_response, *_ = await self.get_list_response(tid, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     async def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -209,16 +212,16 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
-        parsed_response, *_ = await self.get_list_response(b'stats.')
+        parsed_response, *_ = await self.get_list_response(tid, b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    async def get_list_response(self, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    async def get_list_response(self, tid: int, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
         response = b''
         last_packet = False
         while not last_packet:
-            packet = await self.wrapped_read()
+            packet = await self.wrapped_read(tid)
             data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
             response += data
 
@@ -291,14 +294,14 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
 
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
         # followed by n LDAT packets with the lobby details
-        llst_response = await self.wrapped_read()
+        llst_response = await self.wrapped_read(tid)
         llst = self.parse_simple_response(llst_response)
         num_lobbies = int(llst['NUM-LOBBIES'])
 
         # Retrieve given number of lobbies (usually just one these days)
         lobbies = []
         for i in range(num_lobbies):
-            ldat_response = await self.wrapped_read()
+            ldat_response = await self.wrapped_read(tid)
             ldat = self.parse_simple_response(ldat_response)
             lobbies.append(ldat)
 
@@ -319,7 +322,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
 
         # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
         # in the lobby. It then sends one GDAT packet per game/server
-        glst_response = await self.wrapped_read()
+        glst_response = await self.wrapped_read(tid)
         # Response may indicate an error if given lobby id does not exist
         is_error, error = self.is_error_response(glst_response)
         if is_error:
@@ -330,7 +333,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         # Retrieve GDAT for all servers
         servers = []
         for i in range(num_games):
-            gdat_response = await self.wrapped_read()
+            gdat_response = await self.wrapped_read(tid)
             gdat = self.parse_simple_response(gdat_response)
             servers.append(gdat)
 
@@ -356,13 +359,13 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
 
         # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
         # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
-        gdat_response = await self.wrapped_read()
+        gdat_response = await self.wrapped_read(tid)
         # Response may indicate an error if given lobby id and /or game id do not exist
         is_error, error = self.is_error_response(gdat_response)
         if is_error:
             raise error
         gdat = self.parse_simple_response(gdat_response)
-        gdet_response = await self.wrapped_read()
+        gdet_response = await self.wrapped_read(tid)
         gdet = self.parse_simple_response(gdet_response)
 
         # Determine number of active players (AP)
@@ -370,7 +373,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
-            pdat_response = await self.wrapped_read()
+            pdat_response = await self.wrapped_read(tid)
             pdat = self.parse_simple_response(pdat_response)
             players.append(pdat)
 
