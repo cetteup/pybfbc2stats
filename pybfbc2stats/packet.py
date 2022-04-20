@@ -1,6 +1,7 @@
-from typing import List
+from typing import List, Optional
 
-from .constants import VALID_HEADER_TYPES, HEADER_LENGTH, VALID_HEADER_ERROR_INDICATORS
+from .constants import HEADER_LENGTH, VALID_HEADER_TYPES_FESL, VALID_HEADER_TYPES_THEATER, \
+    VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER
 from .exceptions import Error
 
 
@@ -13,11 +14,12 @@ class Packet:
         self.body = body
 
     @classmethod
-    def build(cls, header_stub: bytes, body_data: bytes):
+    def build(cls, header_stub: bytes, body_data: bytes, tid: Optional[int] = None):
         """
         Build and return a new packet from a given header stub (first 8 header bytes) and the given body data
         :param header_stub: First 8 bytes of the packet header
         :param body_data: Data to use as packet body
+        :param tid: Transaction id for packet
         :return: New packet with valid length indicators
         """
         # Add packet length indicators to header
@@ -25,9 +27,15 @@ class Packet:
         # Add "tail" to body
         body = body_data + b'\n\x00'
         self = cls(header, body)
+        # Update transaction id if present
+        if tid is not None:
+            self.set_tid(tid)
         # Update length indicators
         self.set_length_indicators()
         return self
+
+    def set_tid(self, tid: int) -> None:
+        pass
 
     def set_length_indicators(self) -> None:
         """
@@ -49,11 +57,9 @@ class Packet:
         self.header = bytes(header_array)
 
     def indicated_length(self) -> int:
-        # Make sure the header is valid first
-        self.validate_header()
         # Sum of the last four header elements indicates the length of the entire packet
         # => validate indicators match total length of received data
-        return (self.header[8] << 24) + (self.header[9] << 16) + (self.header[10] << 8) + self.header[11]
+        return self.bytes2int(self.header[8:12])
 
     def indicated_body_length(self) -> int:
         """
@@ -78,6 +84,10 @@ class Packet:
         """
         return self.get_data().split(b'\n')
 
+    @staticmethod
+    def bytes2int(b: bytes) -> int:
+        return int.from_bytes(b, byteorder=HEADER_BYTE_ORDER)
+
     def __str__(self):
         return (self.header + self.body).__str__()
 
@@ -86,28 +96,73 @@ class Packet:
 
     def validate_header(self) -> None:
         """
-        Make sure header
+        Make sure every header
         and
           contains 12 bytes
-          starts with a valid type (e.g. "rank") which is
-          or
-            and
-              followed by a valid packet count indicator (\x80 = single packet, \xb0 = multi packet) which is
-              followed by \x00\x00
-            and
-              followed by a valid error indicator (Theater indicates errors in header, not body)
-              followed by \x00\x00\x00
-
-        Theater error response packet headers are treated as valid here because we do need to read their body in order
-        to not leave bytes "on the line". Also, they are not invalid responses just because they indicate an error.
+          contains a non-zero packet body indicator
         """
-        valid = (len(self.header) == HEADER_LENGTH and self.header[:4] in VALID_HEADER_TYPES and
-                 (self.header[4] in [0, 128, 176] and self.header[5:7] == b'\x00\x00' or
-                  self.header[4:8] in VALID_HEADER_ERROR_INDICATORS and self.header[8:11] == b'\x00\x00\x00'))
-        if not valid:
+        if not len(self.header) == HEADER_LENGTH or self.bytes2int(self.header[8:12]) <= 0:
             raise Error('Packet header is not valid')
 
     def validate_body(self) -> None:
         # Validate indicated length matches total length of received data
         if self.indicated_length() != len(self.header) + len(self.body):
             raise Error('Received packet with invalid body')
+
+
+class FeslPacket(Packet):
+    def set_tid(self, tid: int) -> None:
+        """
+        Set/update the transaction id/packet counter in packet header
+        """
+        # Deconstruct header bytes into bytearray
+        header_array = bytearray(self.header)
+
+        # Update transaction id bytes
+        header_array[5] = tid >> 16 & 255
+        header_array[6] = tid >> 8 & 255
+        header_array[7] = tid & 255
+
+        self.header = bytes(header_array)
+
+    def validate_header(self) -> None:
+        super().validate_header()
+
+        """
+        Any valid FESL header also
+        and
+          starts with a valid type (e.g. "rank") which is
+          followed by a valid packet count indicator (\x00 = ping packet, \x80 = single packet, \xb0 = multi packet)
+        """
+        valid = self.header[:4] in VALID_HEADER_TYPES_FESL and self.header[4] in [0, 128, 176]
+        if not valid:
+            raise Error('Packet header is not valid')
+
+
+class TheaterPacket(Packet):
+    def set_tid(self, tid: int) -> None:
+        """
+        Set/update the transaction id/packet counter in packet body (requires re-calculation of length indicators)
+        """
+        # Remove body "tail", add tid and add "tail" again
+        self.body = self.body[:-2] + b'\nTID=' + str(tid).encode('utf8') + b'\n\x00'
+
+    def validate_header(self) -> None:
+        super().validate_header()
+
+        """
+        Any valid theater header also
+        and
+          starts with a valid type (e.g. "GDAT") which is
+          or
+            followed by \x00\x00\x00\x00 (4 zero bytes, indicating no-error/success)
+            followed by a valid 4-byte error indicator (Theater indicates errors in header, not body)
+
+        Theater error response packet headers are treated as valid here because we do need to read their body in order
+        to not leave bytes "on the line". Also, they are not invalid responses just because they indicate an error.
+        """
+        valid = (self.header[:4] in VALID_HEADER_TYPES_THEATER and
+                 (self.bytes2int(self.header[4:8]) == 0 or self.header[4:8] in VALID_HEADER_ERROR_INDICATORS))
+
+        if not valid:
+            raise Error('Packet header is not valid')

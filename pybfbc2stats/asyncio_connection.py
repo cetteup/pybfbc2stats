@@ -1,7 +1,7 @@
 import asyncio
 import socket
 import time
-from typing import Tuple
+from typing import Tuple, Type
 
 from .connection import Connection, SecureConnection
 from .constants import HEADER_LENGTH
@@ -15,8 +15,8 @@ class AsyncConnection(Connection):
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
 
-    def __init__(self, host: str, port: int, timeout: float = 2.0):
-        super().__init__(host, port, timeout)
+    def __init__(self, host: str, port: int, packet_type: Type[Packet], timeout: float = 2.0):
+        super().__init__(host, port, packet_type, timeout)
 
     async def connect(self) -> None:
         if self.is_connected:
@@ -57,7 +57,7 @@ class AsyncConnection(Connection):
             await self.connect()
 
         # Init empty packet
-        packet = Packet()
+        packet = self.packet_type()
 
         # Read header only first
         logger.debug('Reading packet header')

@@ -5,7 +5,7 @@ from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
     TheaterStep
 from .exceptions import PlayerNotFoundError, AuthError
-from .packet import Packet
+from .packet import Packet, FeslPacket, TheaterPacket
 
 
 class AsyncClient(Client):
@@ -49,6 +49,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         connection = AsyncSecureConnection(
             BACKEND_DETAILS[platform]['host'],
             BACKEND_DETAILS[platform]['port'],
+            FeslPacket,
             timeout
         )
         """
@@ -72,7 +73,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if self.track_steps and FeslStep.hello in self.completed_steps:
             return bytes(self.completed_steps[FeslStep.hello])
 
-        hello_packet = self.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
+        tid = self.get_transaction_id()
+        hello_packet = self.build_hello_packet(tid, BACKEND_DETAILS[self.platform]['clientString'])
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -96,7 +98,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         elif self.track_steps and FeslStep.hello not in self.completed_steps:
             await self.hello()
 
-        login_packet = self.build_login_packet(self.username, self.password)
+        tid = self.get_transaction_id()
+        login_packet = self.build_login_packet(tid, self.username, self.password)
         await self.connection.write(login_packet)
         response = await self.wrapped_read()
 
@@ -111,7 +114,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.track_steps and FeslStep.login in self.completed_steps:
-            logout_packet = self.build_logout_packet()
+            tid = self.get_transaction_id()
+            logout_packet = self.build_logout_packet(tid)
             await self.connection.write(logout_packet)
             self.completed_steps.clear()
             return bytes(await self.wrapped_read())
@@ -157,7 +161,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
+        tid = self.get_transaction_id()
+        lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
         parsed_response, *_ = await self.get_list_response(b'userInfo.')
@@ -175,7 +180,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        search_packet = self.build_search_packet(screen_name, namespace)
+        tid = self.get_transaction_id()
+        search_packet = self.build_search_packet(tid, screen_name, namespace)
         await self.connection.write(search_packet)
 
         parsed_response, metadata = await self.get_list_response(b'users.')
@@ -185,8 +191,9 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        # Send query in chunks
-        chunk_packets = self.build_stats_query_packets(userid, keys)
+        # Send query in chunks (using the same transaction id for all packets)
+        tid = self.get_transaction_id()
+        chunk_packets = self.build_stats_query_packets(tid, userid, keys)
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
@@ -198,7 +205,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
-        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        tid = self.get_transaction_id()
+        leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
         parsed_response, *_ = await self.get_list_response(b'stats.')
@@ -220,7 +228,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 class AsyncTheaterClient(TheaterClient, AsyncClient):
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = AsyncConnection(host, port)
+        connection = AsyncConnection(host, port, TheaterPacket)
         # "Skip" TheaterClient constructor, for details see note in AsyncFeslClient.__init__
         super(TheaterClient, self).__init__(connection, platform, timeout, track_steps)
         self.lkey = lkey.encode('utf8')
@@ -367,11 +375,3 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
             players.append(pdat)
 
         return gdat, gdet, players
-
-    def get_transaction_id(self) -> bytes:
-        """
-        "Assign" a transaction id (each packet sent to Theater must have a sequential tid/transaction id)
-        :return: Transaction id as bytes
-        """
-        self.transaction_id += 1
-        return str(self.transaction_id).encode('utf8')

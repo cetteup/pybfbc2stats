@@ -7,7 +7,7 @@ from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Pla
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError
-from .packet import Packet
+from .packet import Packet, FeslPacket, TheaterPacket
 
 
 class Client:
@@ -15,6 +15,7 @@ class Client:
     timeout: float
     track_steps: bool
     connection: Connection
+    transaction_id: int
     completed_steps: Dict[Step, Packet]
 
     def __init__(self, connection: Connection, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
@@ -24,6 +25,7 @@ class Client:
         # Using the client with too short of a timeout leads to lots if issues with reads timing out and subsequent
         # reads then reading data from the previous "request" => enforce minimum timeout of 2 seconds
         self.connection.timeout = max(timeout, 2.0)
+        self.transaction_id = 0
         self.completed_steps = {}
 
     def __enter__(self):
@@ -51,6 +53,14 @@ class Client:
             data_packet = initial_packet
 
         return data_packet
+
+    def get_transaction_id(self) -> int:
+        """
+        "Assign" a transaction id (FESL sends them as part of the header for all but memcheck and ping packets)
+        :return: Transaction id as int
+        """
+        self.transaction_id += 1
+        return self.transaction_id
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         pass
@@ -83,7 +93,8 @@ class FeslClient(Client):
                  track_steps: bool = True):
         connection = SecureConnection(
             BACKEND_DETAILS[platform]['host'],
-            BACKEND_DETAILS[platform]['port']
+            BACKEND_DETAILS[platform]['port'],
+            FeslPacket
         )
         super().__init__(connection, platform, timeout, track_steps)
         self.username = username.encode('utf8')
@@ -97,7 +108,8 @@ class FeslClient(Client):
         if self.track_steps and FeslStep.hello in self.completed_steps:
             return bytes(self.completed_steps[FeslStep.hello])
 
-        hello_packet = self.build_hello_packet(BACKEND_DETAILS[self.platform]['clientString'])
+        tid = self.get_transaction_id()
+        hello_packet = self.build_hello_packet(tid, BACKEND_DETAILS[self.platform]['clientString'])
         self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -121,7 +133,8 @@ class FeslClient(Client):
         elif self.track_steps and FeslStep.hello not in self.completed_steps:
             self.hello()
 
-        login_packet = self.build_login_packet(self.username, self.password)
+        tid = self.get_transaction_id()
+        login_packet = self.build_login_packet(tid, self.username, self.password)
         self.connection.write(login_packet)
         response = self.wrapped_read()
 
@@ -135,7 +148,8 @@ class FeslClient(Client):
 
     def logout(self) -> Optional[bytes]:
         if self.track_steps and FeslStep.login in self.completed_steps:
-            logout_packet = self.build_logout_packet()
+            tid = self.get_transaction_id()
+            logout_packet = self.build_logout_packet(tid)
             self.connection.write(logout_packet)
             self.completed_steps.clear()
             return bytes(self.wrapped_read())
@@ -181,7 +195,8 @@ class FeslClient(Client):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
-        lookup_packet = self.build_user_lookup_packet(identifiers, namespace, lookup_type)
+        tid = self.get_transaction_id()
+        lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         self.connection.write(lookup_packet)
 
         parsed_response, *_ = self.get_list_response(b'userInfo.')
@@ -199,7 +214,8 @@ class FeslClient(Client):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
-        search_packet = self.build_search_packet(screen_name, namespace)
+        tid = self.get_transaction_id()
+        search_packet = self.build_search_packet(tid, screen_name, namespace)
         self.connection.write(search_packet)
 
         parsed_response, metadata = self.get_list_response(b'users.')
@@ -209,8 +225,9 @@ class FeslClient(Client):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
-        # Send query in chunks
-        chunk_packets = self.build_stats_query_packets(userid, keys)
+        # Send query in chunks (using the same transaction id for all packets)
+        tid = self.get_transaction_id()
+        chunk_packets = self.build_stats_query_packets(tid, userid, keys)
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
@@ -222,7 +239,8 @@ class FeslClient(Client):
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
-        leaderboard_packet = self.build_leaderboard_query_packet(min_rank, max_rank, sort_by, keys)
+        tid = self.get_transaction_id()
+        leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
         parsed_response, *_ = self.get_list_response(b'stats.')
@@ -276,76 +294,80 @@ class FeslClient(Client):
         return b'.'.join(dotted_elements) + b'=' + value
 
     @staticmethod
-    def build_hello_packet(client_string: bytes) -> Packet:
-        return Packet.build(
-            b'fsys\xc0\x00\x00\x01',
+    def build_hello_packet(tid: int, client_string: bytes) -> FeslPacket:
+        return FeslPacket.build(
+            b'fsys\xc0\x00\x00\x00',
             b'TXN=Hello\nclientString=' + client_string +
             b'\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\n'
-            b'fragmentSize=8096\nclientType=server'
+            b'fragmentSize=8096\nclientType=server',
+            tid
         )
 
     @staticmethod
-    def build_memcheck_packet() -> Packet:
-        return Packet.build(
+    def build_memcheck_packet() -> FeslPacket:
+        return FeslPacket.build(
             b'fsys\x80\x00\x00\x00',
             b'TXN=MemCheck\nresult='
         )
 
     @staticmethod
-    def build_login_packet(username: bytes, password: bytes) -> Packet:
-        return Packet.build(
-            b'acct\xc0\x00\x00\x02',
+    def build_login_packet(tid: int, username: bytes, password: bytes) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct\xc0\x00\x00\x00',
             b'TXN=Login\nreturnEncryptedInfo=0\n'
-            b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000'
+            b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000',
+            tid
         )
 
     @staticmethod
-    def build_logout_packet() -> Packet:
-        return Packet.build(
-            b'fsys\xc0\x00\x00\x03',
-            b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"'
+    def build_logout_packet(tid: int) -> FeslPacket:
+        return FeslPacket.build(
+            b'fsys\xc0\x00\x00\x00',
+            b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"',
+            tid
         )
 
     @staticmethod
-    def build_ping_packet() -> Packet:
-        return Packet.build(
+    def build_ping_packet() -> FeslPacket:
+        return FeslPacket.build(
             b'fsys\x80\x00\x00\x00',
             b'TXN=Ping'
         )
 
     @staticmethod
-    def build_user_lookup_packet(user_identifiers: List[str], namespace: Namespace, lookup_type: LookupType) -> Packet:
+    def build_user_lookup_packet(tid: int, user_identifiers: List[str],
+                                 namespace: Namespace, lookup_type: LookupType) -> FeslPacket:
         user_dicts = [{bytes(lookup_type): identifier.encode('utf8'), b'namespace': bytes(namespace)}
                       for identifier in user_identifiers]
         lookup_list = FeslClient.build_list_body(user_dicts, b'userInfo')
-        lookup_packet = Packet.build(
-            b'acct\xc0\x00\x00\n',
-            b'TXN=NuLookupUserInfo\n' + lookup_list
+        return FeslPacket.build(
+            b'acct\xc0\x00\x00\x00',
+            b'TXN=NuLookupUserInfo\n' + lookup_list,
+            tid
         )
 
-        return lookup_packet
-
     @staticmethod
-    def build_search_packet(screen_name: str, namespace: Namespace) -> Packet:
-        return Packet.build(
-            b'acct\xc0\x00\x00\x1c',
+    def build_search_packet(tid: int, screen_name: str, namespace: Namespace) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct\xc0\x00\x00\x00',
             b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0\n'
-            b'nameSpaceId=' + bytes(namespace)
+            b'nameSpaceId=' + bytes(namespace),
+            tid
         )
 
     @staticmethod
-    def build_leaderboard_query_packet(min_rank: int, max_rank: int, sort_by: bytes, keys: List[bytes]) -> Packet:
+    def build_leaderboard_query_packet(tid: int, min_rank: int, max_rank: int,
+                                       sort_by: bytes, keys: List[bytes]) -> FeslPacket:
         key_list = FeslClient.build_list_body(keys, b'keys')
-        leaderboard_packet = Packet.build(
+        return FeslPacket.build(
             b'rank\xc0\x00\x00\x00',
             b'TXN=GetTopNAndStats\nkey=' + sort_by + b'\nownerType=1\nminRank=' + str(min_rank).encode('utf8') +
-            b'\nmaxRank=' + str(max_rank).encode('utf8') + b'\nperiodId=0\nperiodPast=0\nrankOrder=0\n' + key_list
+            b'\nmaxRank=' + str(max_rank).encode('utf8') + b'\nperiodId=0\nperiodPast=0\nrankOrder=0\n' + key_list,
+            tid
         )
 
-        return leaderboard_packet
-
     @staticmethod
-    def build_stats_query_packets(userid: int, keys: List[bytes]) -> List[Packet]:
+    def build_stats_query_packets(tid: int, userid: int, keys: List[bytes]) -> List[FeslPacket]:
         userid_bytes = str(userid).encode('utf8')
         key_list = FeslClient.build_list_body(keys, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
@@ -362,9 +384,10 @@ class FeslClient(Client):
         chunk_packets = []
         for i in range(0, len(stats_query_enc), available_packet_length):
             query_chunk = stats_query_enc[i:i + available_packet_length]
-            chunk_packet = Packet.build(
-                b'rank\xf0\x00\x00\x0b',
-                b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk
+            chunk_packet = FeslPacket.build(
+                b'rank\xf0\x00\x00\x00',
+                b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk,
+                tid
             )
             chunk_packets.append(chunk_packet)
 
@@ -479,12 +502,11 @@ class FeslClient(Client):
 
 class TheaterClient(Client):
     lkey: bytes
-    transaction_id: int = 0
     completed_steps: Dict[TheaterStep, Packet]
 
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = Connection(host, port)
+        connection = Connection(host, port, TheaterPacket)
         super().__init__(connection, platform, timeout, track_steps)
         self.lkey = lkey.encode('utf8')
 
@@ -627,14 +649,6 @@ class TheaterClient(Client):
 
         return gdat, gdet, players
 
-    def get_transaction_id(self) -> bytes:
-        """
-        "Assign" a transaction id (each packet sent to Theater must have a sequential tid/transaction id)
-        :return: Transaction id as bytes
-        """
-        self.transaction_id += 1
-        return str(self.transaction_id).encode('utf8')
-
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         is_auto_respond_packet, handler = False, None
 
@@ -646,72 +660,76 @@ class TheaterClient(Client):
         return is_auto_respond_packet, handler
 
     @staticmethod
-    def build_conn_paket(tid: bytes, client_string: bytes) -> Packet:
+    def build_conn_paket(tid: int, client_string: bytes) -> TheaterPacket:
         """
         Build the initial hello/connection packet
         :param tid: Transaction id (usually 1, must be sent as first packet)
         :param client_string: Game client string (e.g. "bfbc2-pc")
         :return: Complete packet to establish connection
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'CONN@\x00\x00\x00',
-            b'PROT=2\nPROD=' + client_string + b'\nVERS=1.1\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.0.0.0.0\nTID=' + tid
+            b'PROT=2\nPROD=' + client_string + b'\nVERS=1.1\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.0.0.0.0',
+            tid
         )
 
     @staticmethod
-    def build_user_packet(tid: bytes, lkey: bytes) -> Packet:
+    def build_user_packet(tid: int, lkey: bytes) -> TheaterPacket:
         """
         Build the user/login packet
         :param tid: Transaction id (usually 2, must be sent as second packet)
         :param lkey: Login key from a FESL session
         :return: Complete packet to perform login
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'USER@\x00\x00\x00',
-            b'MAC=$000000000000\nSKU=125170\nLKEY=' + lkey + b'\nNAME=\nTID=' + tid
+            b'MAC=$000000000000\nSKU=125170\nLKEY=' + lkey + b'\nNAME=',
+            tid
         )
 
     @staticmethod
-    def build_ping_packet() -> Packet:
+    def build_ping_packet() -> TheaterPacket:
         """
         Build a ping response packet
         :return: Complete packet to respond to ping with
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'PING\x00\x00\x00\x00',
             b'TID=0'
         )
 
     @staticmethod
-    def build_llst_packet(tid: bytes) -> Packet:
+    def build_llst_packet(tid: int) -> TheaterPacket:
         """
         Build the llst/lobby list packet
         :param tid: Transaction id
         :return: Complete packet to list all available game lobbies
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'LLST@\x00\x00\x00',
             b'FILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\nFILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\n'
-            b'FAV-PLAYER=\nFAV-GAME=\nFAV-PLAYER-UID=\nFAV-GAME-UID=\nTID=' + tid
+            b'FAV-PLAYER=\nFAV-GAME=\nFAV-PLAYER-UID=\nFAV-GAME-UID=',
+            tid
         )
 
     @staticmethod
-    def build_glst_packet(tid: bytes, lid: bytes) -> Packet:
+    def build_glst_packet(tid: int, lid: bytes) -> TheaterPacket:
         """
         Build the glst/game (server) list packet
         :param tid: Transaction id
         :param lid: Id of lobby to retrieve games from
         :return: Complete packet to list all available game servers in lobby
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'GLST@\x00\x00\x00',
             b'LID=' + lid + b'\nTYPE=\nFILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\n'
             b'FILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\nFAV-PLAYER=\nFAV-GAME=\nCOUNT=-1\nFAV-PLAYER-UID=\n'
-            b'FAV-GAME-UID=\nTID=' + tid
+            b'FAV-GAME-UID=',
+            tid
         )
 
     @staticmethod
-    def build_gdat_packet(tid: bytes, lid: bytes, gid: bytes) -> Packet:
+    def build_gdat_packet(tid: int, lid: bytes, gid: bytes) -> TheaterPacket:
         """
         Build the gdat/game (server) detailed data packet
         :param tid: Transaction id
@@ -719,9 +737,10 @@ class TheaterClient(Client):
         :param gid: Id of the game server
         :return: Complete packet to retrieve detailed data for the game server
         """
-        return Packet.build(
+        return TheaterPacket.build(
             b'GDAT@\x00\x00\x00',
-            b'LID=' + lid + b'\nGID=' + gid + b'\nTID=' + tid
+            b'LID=' + lid + b'\nGID=' + gid,
+            tid
         )
 
     @staticmethod

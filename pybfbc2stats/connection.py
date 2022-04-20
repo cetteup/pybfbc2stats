@@ -1,6 +1,7 @@
 import socket
 import ssl
 import time
+from typing import Type
 
 from .constants import HEADER_LENGTH
 from .exceptions import TimeoutError, ConnectionError
@@ -11,13 +12,15 @@ from .packet import Packet
 class Connection:
     host: str
     port: int
+    packet_type: Type[Packet]
     sock: socket.socket
     timeout: float
     is_connected: bool = False
 
-    def __init__(self, host: str, port: int, timeout: float = 2.0):
+    def __init__(self, host: str, port: int, packet_type: Type[Packet], timeout: float = 2.0):
         self.host = host
         self.port = port
+        self.packet_type = packet_type
         self.timeout = timeout
 
     def connect(self) -> None:
@@ -57,7 +60,7 @@ class Connection:
             self.connect()
 
         # Init empty packet
-        packet = Packet()
+        packet = self.packet_type()
 
         # Read header only first
         logger.debug('Reading packet header')
