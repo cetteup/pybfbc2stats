@@ -142,9 +142,14 @@ class FeslPacket(Packet):
         Any valid FESL header also
         and
           starts with a valid type (e.g. "rank") which is
-          followed by a valid packet count indicator (\x00 = ping packet, \x80 = single packet, \xb0 = multi packet)
+          followed by a valid packet type/count indicator:
+            \x00 = ping packet
+            \x80 = single packet response
+            \xb0 = multi packet response
+            \xc0 = single packet request
+            \xf0 = multi packet request
         """
-        valid = self.header[:4] in VALID_HEADER_TYPES_FESL and self.header[4] in [0, 128, 176]
+        valid = self.header[:4] in VALID_HEADER_TYPES_FESL and self.header[4] in [0, 128, 176, 192, 240]
         if not valid:
             raise Error('Packet header is not valid')
 
@@ -179,14 +184,17 @@ class TheaterPacket(Packet):
         and
           starts with a valid type (e.g. "GDAT") which is
           or
-            followed by \x00\x00\x00\x00 (4 zero bytes, indicating no-error/success)
-            followed by a valid 4-byte error indicator (Theater indicates errors in header, not body)
+            followed by @\x00\x00\x00 (64 followed by 3 zero bytes, indicating a request)
+            followed by \x00\x00\x00\x00 (4 zero bytes, indicating no-error/success response)
+            followed by a valid 4-byte error response indicator (Theater indicates errors in header, not body)
 
         Theater error response packet headers are treated as valid here because we do need to read their body in order
         to not leave bytes "on the line". Also, they are not invalid responses just because they indicate an error.
         """
         valid = (self.header[:4] in VALID_HEADER_TYPES_THEATER and
-                 (self.bytes2int(self.header[4:8]) == 0 or self.header[4:8] in VALID_HEADER_ERROR_INDICATORS))
+                 (self.bytes2int(self.header[4:8]) == 0 or
+                  self.header[4] == 64 and self.bytes2int(self.header[5:8]) == 0 or
+                  self.header[4:8] in VALID_HEADER_ERROR_INDICATORS))
 
         if not valid:
             raise Error('Packet header is not valid')
