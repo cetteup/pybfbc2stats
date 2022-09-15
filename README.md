@@ -2,6 +2,11 @@
 
 Python 🐍 library for retrieving statistics of Battlefield: Bad Company 2 players. Possible thanks to previous work by Luigi Auriemma and nemo.
 
+[![ci](https://img.shields.io/github/workflow/status/cetteup/pybfbc2stats/ci?label=ci)](https://github.com/cetteup/pybfbc2stats/actions?query=workflow%3Aci)
+[![License](https://img.shields.io/github/license/cetteup/pybfbc2stats)](/LICENSE)
+[![Package](https://img.shields.io/pypi/v/pybfbc2stats)](https://pypi.org/project/pybfbc2stats/)
+[![Last commit](https://img.shields.io/github/last-commit/cetteup/pybfbc2stats)](https://github.com/cetteup/pybfbc2stats/commits/main)
+
 ## Features
 
 - lookup players/personas by id or name on any platform
