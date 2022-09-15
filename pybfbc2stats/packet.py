@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from .constants import HEADER_LENGTH, VALID_HEADER_TYPES_FESL, VALID_HEADER_TYPES_THEATER, \
     VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER
@@ -94,8 +94,16 @@ class Packet:
     def __str__(self):
         return (self.header + self.body).__str__()
 
+    def __repr__(self):
+        return str(self)
+
     def __bytes__(self):
         return self.header + self.body
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, type(self)) and \
+               other.header == self.header and \
+               other.body == self.body
 
     def validate_header(self) -> None:
         """
