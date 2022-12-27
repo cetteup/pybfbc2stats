@@ -3,8 +3,8 @@ import socket
 import time
 from typing import Tuple, Type
 
+from .buffer import Buffer
 from .connection import Connection, SecureConnection
-from .constants import HEADER_LENGTH
 from .exceptions import TimeoutError, ConnectionError
 from .logger import logger
 from .packet import Packet
@@ -37,10 +37,11 @@ class AsyncConnection(Connection):
             raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     async def write(self, packet: Packet) -> None:
-        logger.debug('Writing to socket')
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
+
+        logger.debug('Writing to socket')
 
         try:
             self.writer.write(bytes(packet))
@@ -51,68 +52,54 @@ class AsyncConnection(Connection):
         logger.debug(packet)
 
     async def read(self) -> Packet:
-        logger.debug('Reading from socket')
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
 
-        # Init empty packet
-        packet = self.packet_type()
+        logger.debug('Reading from socket')
 
-        # Read header only first
-        logger.debug('Reading packet header')
+        packet = self.packet_type()
         last_received = time.time()
         timed_out = False
-        while len(packet.header) < HEADER_LENGTH and not timed_out:
-            iteration_buffer = await self.read_safe(HEADER_LENGTH - len(packet.header))
-            packet.header += iteration_buffer
+        while (packet_buflen := packet.buflen()) > 0 and not timed_out:
+            iteration_buffer = await self.read_safe(packet_buflen)
+
+            # Append whatever data is missing from the header to it
+            if (header_buflen := packet.header_buflen()) > 0:
+                packet.header += iteration_buffer.read(min(header_buflen, iteration_buffer.length))
+                # Log packet header once complete
+                if packet.header_buflen() == 0:
+                    logger.debug(f'Received header: {packet.header}')
+
+                    # Make sure packet header is valid (throws exception if invalid)
+                    packet.validate_header()
+
+            # Append any remaining data to body
+            packet.body += iteration_buffer.get_buffer()
 
             # Update timestamp if any data was retrieved during current iteration
-            if len(iteration_buffer) > 0:
+            if iteration_buffer.length > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
-
-        logger.debug(packet.header)
-
-        # Make sure packet header is valid (throws exception if invalid)
-        packet.validate_header()
 
         if timed_out:
             raise TimeoutError('Timed out while reading packet header')
 
-        # Read number of bytes indicated by packet header
-        logger.debug('Reading packet body')
-        last_received = time.time()
-        timed_out = False
-        while len(packet.body) < packet.indicated_body_length() and not timed_out:
-            iteration_buffer = await self.read_safe(packet.indicated_body_length() - len(packet.body))
-            packet.body += iteration_buffer
-
-            # Update timestamp if any data was retrieved during current iteration
-            if len(iteration_buffer) > 0:
-                last_received = time.time()
-            timed_out = time.time() > last_received + self.timeout
-
-        logger.debug(packet.body)
-
-        if timed_out:
-            raise TimeoutError('Timed out while reading packet body')
+        logger.debug(f'Received body: {packet.body}')
 
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
 
         return packet
 
-    async def read_safe(self, buflen: int) -> bytes:
+    async def read_safe(self, buflen: int) -> Buffer:
         future = self.reader.read(buflen)
         try:
-            buffer = await asyncio.wait_for(future, self.timeout)
+            return Buffer(await asyncio.wait_for(future, self.timeout))
         except (socket.timeout, asyncio.TimeoutError):
             raise TimeoutError('Timed out while receiving server data')
         except (socket.error, ConnectionResetError) as e:
             raise ConnectionError(f'Failed to receive data from server ({e})')
-
-        return buffer
 
     async def open_connection(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         return await asyncio.open_connection(sock=self.sock)

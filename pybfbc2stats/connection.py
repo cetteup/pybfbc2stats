@@ -3,7 +3,7 @@ import ssl
 import time
 from typing import Type
 
-from .constants import HEADER_LENGTH
+from .buffer import Buffer
 from .exceptions import TimeoutError, ConnectionError
 from .logger import logger
 from .packet import Packet
@@ -41,10 +41,11 @@ class Connection:
             raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
 
     def write(self, packet: Packet) -> None:
-        logger.debug('Writing to socket')
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             self.connect()
+
+        logger.debug('Writing to socket')
 
         try:
             self.sock.sendall(bytes(packet))
@@ -54,67 +55,53 @@ class Connection:
         logger.debug(packet)
 
     def read(self) -> Packet:
-        logger.debug('Reading from socket')
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             self.connect()
 
-        # Init empty packet
-        packet = self.packet_type()
+        logger.debug('Reading from socket')
 
-        # Read header only first
-        logger.debug('Reading packet header')
+        packet = self.packet_type()
         last_received = time.time()
         timed_out = False
-        while len(packet.header) < HEADER_LENGTH and not timed_out:
-            iteration_buffer = self.read_safe(HEADER_LENGTH - len(packet.header))
-            packet.header += iteration_buffer
+        while (packet_buflen := packet.buflen()) > 0 and not timed_out:
+            iteration_buffer = self.read_safe(packet_buflen)
+
+            # Append whatever data is missing from the head to it
+            if (header_buflen := packet.header_buflen()) > 0:
+                packet.header += iteration_buffer.read(min(header_buflen, iteration_buffer.length))
+                # Log packet header once complete
+                if packet.header_buflen() == 0:
+                    logger.debug(f'Received header: {packet.header}')
+
+                    # Make sure packet header is valid (throws exception if invalid)
+                    packet.validate_header()
+
+            # Append any remaining data to body
+            packet.body += iteration_buffer.get_buffer()
 
             # Update timestamp if any data was retrieved during current iteration
-            if len(iteration_buffer) > 0:
+            if iteration_buffer.length > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
 
         if timed_out:
             raise TimeoutError('Timed out while reading packet header')
 
-        logger.debug(packet.header)
-
-        # Make sure packet header is valid (throws exception if invalid)
-        packet.validate_header()
-
-        # Read number of bytes indicated by packet header
-        logger.debug('Reading packet body')
-        last_received = time.time()
-        timed_out = False
-        while len(packet.body) < packet.indicated_body_length() and not timed_out:
-            iteration_buffer = self.read_safe(packet.indicated_body_length() - len(packet.body))
-            packet.body += iteration_buffer
-
-            # Update timestamp if any data was retrieved during current iteration
-            if len(iteration_buffer) > 0:
-                last_received = time.time()
-            timed_out = time.time() > last_received + self.timeout
-
-        logger.debug(packet.body)
-
-        if timed_out:
-            raise TimeoutError('Timed out while reading packet body')
+        logger.debug(f'Received body: {packet.body}')
 
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
 
         return packet
 
-    def read_safe(self, buflen: int) -> bytes:
+    def read_safe(self, buflen: int) -> Buffer:
         try:
-            buffer = self.sock.recv(buflen)
+            return Buffer(self.sock.recv(buflen))
         except socket.timeout:
             raise TimeoutError('Timed out while receiving server data')
         except (socket.error, ConnectionResetError) as e:
             raise ConnectionError(f'Failed to receive data from server ({e})')
-
-        return buffer
 
     def init_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

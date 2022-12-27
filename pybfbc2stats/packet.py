@@ -34,6 +34,22 @@ class Packet:
         self.set_length_indicators()
         return self
 
+    def header_buflen(self) -> int:
+        """Number of bytes to read until header is complete"""
+        return HEADER_LENGTH - len(self.header)
+
+    def body_buflen(self) -> int:
+        """Number of bytes to read until body is complete"""
+        return self.indicated_body_length() - len(self.body)
+
+    def buflen(self) -> int:
+        """Number of bytes to read until entire packet is complete"""
+        # Remaining body buffer length may be unknown until we have a complete header, so complete that first
+        if (header_buflen := self.header_buflen()) > 0:
+            return header_buflen
+
+        return self.body_buflen()
+
     def set_tid(self, tid: int) -> None:
         pass
 
