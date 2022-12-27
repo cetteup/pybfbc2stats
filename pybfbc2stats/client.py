@@ -299,7 +299,7 @@ class FeslClient(Client):
     @staticmethod
     def build_hello_packet(tid: int, client_string: bytes) -> FeslPacket:
         return FeslPacket.build(
-            b'fsys\xc0\x00\x00\x00',
+            b'fsys\xc0',
             b'TXN=Hello\nclientString=' + client_string +
             b'\nsku=PC\nlocale=en_US\nclientPlatform=PC\nclientVersion=2.0\nSDKVersion=5.1.2.0.0\nprotocolVersion=2.0\n'
             b'fragmentSize=8096\nclientType=server',
@@ -309,14 +309,14 @@ class FeslClient(Client):
     @staticmethod
     def build_memcheck_packet() -> FeslPacket:
         return FeslPacket.build(
-            b'fsys\x80\x00\x00\x00',
+            b'fsys\x80',
             b'TXN=MemCheck\nresult='
         )
 
     @staticmethod
     def build_login_packet(tid: int, username: bytes, password: bytes) -> FeslPacket:
         return FeslPacket.build(
-            b'acct\xc0\x00\x00\x00',
+            b'acct\xc0',
             b'TXN=Login\nreturnEncryptedInfo=0\n'
             b'name=' + username + b'\npassword=' + password + b'\nmacAddr=$000000000000',
             tid
@@ -325,7 +325,7 @@ class FeslClient(Client):
     @staticmethod
     def build_logout_packet(tid: int) -> FeslPacket:
         return FeslPacket.build(
-            b'fsys\xc0\x00\x00\x00',
+            b'fsys\xc0',
             b'TXN=Goodbye\nreason=GOODBYE_CLIENT_NORMAL\nmessage="Disconnected via front-end"',
             tid
         )
@@ -333,7 +333,7 @@ class FeslClient(Client):
     @staticmethod
     def build_ping_packet() -> FeslPacket:
         return FeslPacket.build(
-            b'fsys\x80\x00\x00\x00',
+            b'fsys\x80',
             b'TXN=Ping'
         )
 
@@ -344,7 +344,7 @@ class FeslClient(Client):
                       for identifier in user_identifiers]
         lookup_list = FeslClient.build_list_body(user_dicts, b'userInfo')
         return FeslPacket.build(
-            b'acct\xc0\x00\x00\x00',
+            b'acct\xc0',
             b'TXN=NuLookupUserInfo\n' + lookup_list,
             tid
         )
@@ -352,7 +352,7 @@ class FeslClient(Client):
     @staticmethod
     def build_search_packet(tid: int, screen_name: str, namespace: Namespace) -> FeslPacket:
         return FeslPacket.build(
-            b'acct\xc0\x00\x00\x00',
+            b'acct\xc0',
             b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0\n'
             b'nameSpaceId=' + bytes(namespace),
             tid
@@ -363,7 +363,7 @@ class FeslClient(Client):
                                        sort_by: bytes, keys: List[bytes]) -> FeslPacket:
         key_list = FeslClient.build_list_body(keys, b'keys')
         return FeslPacket.build(
-            b'rank\xc0\x00\x00\x00',
+            b'rank\xc0',
             b'TXN=GetTopNAndStats\nkey=' + sort_by + b'\nownerType=1\nminRank=' + str(min_rank).encode('utf8') +
             b'\nmaxRank=' + str(max_rank).encode('utf8') + b'\nperiodId=0\nperiodPast=0\nrankOrder=0\n' + key_list,
             tid
@@ -388,7 +388,7 @@ class FeslClient(Client):
         for i in range(0, len(stats_query_enc), available_packet_length):
             query_chunk = stats_query_enc[i:i + available_packet_length]
             chunk_packet = FeslPacket.build(
-                b'rank\xf0\x00\x00\x00',
+                b'rank\xf0',
                 b'size=' + encoded_query_size.encode('utf8') + b'\ndata=' + query_chunk,
                 tid
             )
@@ -671,7 +671,7 @@ class TheaterClient(Client):
         :return: Complete packet to establish connection
         """
         return TheaterPacket.build(
-            b'CONN@\x00\x00\x00',
+            b'CONN@',
             b'PROT=2\nPROD=' + client_string + b'\nVERS=1.1\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.0.0.0.0',
             tid
         )
@@ -685,7 +685,7 @@ class TheaterClient(Client):
         :return: Complete packet to perform login
         """
         return TheaterPacket.build(
-            b'USER@\x00\x00\x00',
+            b'USER@',
             b'MAC=$000000000000\nSKU=125170\nLKEY=' + lkey + b'\nNAME=',
             tid
         )
@@ -697,7 +697,7 @@ class TheaterClient(Client):
         :return: Complete packet to respond to ping with
         """
         return TheaterPacket.build(
-            b'PING\x00\x00\x00\x00',
+            b'PING\x00',
             b'TID=0'
         )
 
@@ -709,7 +709,7 @@ class TheaterClient(Client):
         :return: Complete packet to list all available game lobbies
         """
         return TheaterPacket.build(
-            b'LLST@\x00\x00\x00',
+            b'LLST@',
             b'FILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\nFILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\n'
             b'FAV-PLAYER=\nFAV-GAME=\nFAV-PLAYER-UID=\nFAV-GAME-UID=',
             tid
@@ -724,7 +724,7 @@ class TheaterClient(Client):
         :return: Complete packet to list all available game servers in lobby
         """
         return TheaterPacket.build(
-            b'GLST@\x00\x00\x00',
+            b'GLST@',
             b'LID=' + lid + b'\nTYPE=\nFILTER-FAV-ONLY=0\nFILTER-NOT-FULL=0\nFILTER-NOT-PRIVATE=0\n'
             b'FILTER-NOT-CLOSED=0\nFILTER-MIN-SIZE=0\nFAV-PLAYER=\nFAV-GAME=\nCOUNT=-1\nFAV-PLAYER-UID=\n'
             b'FAV-GAME-UID=',
@@ -741,7 +741,7 @@ class TheaterClient(Client):
         :return: Complete packet to retrieve detailed data for the game server
         """
         return TheaterPacket.build(
-            b'GDAT@\x00\x00\x00',
+            b'GDAT@',
             b'LID=' + lid + b'\nGID=' + gid,
             tid
         )

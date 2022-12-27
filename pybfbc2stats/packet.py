@@ -17,13 +17,13 @@ class Packet:
     def build(cls, header_stub: bytes, body_data: bytes, tid: Optional[int] = None):
         """
         Build and return a new packet from a given header stub (first 8 header bytes) and the given body data
-        :param header_stub: First 8 bytes of the packet header
+        :param header_stub: First 5 bytes of the packet header
         :param body_data: Data to use as packet body
         :param tid: Transaction id for packet
         :return: New packet with valid length indicators
         """
-        # Add packet length indicators to header
-        header = header_stub + b'\x00\x00\x00\x00'
+        # Add remaining 7 bytes (tid [3 bytes, FESL only], length indicator [4 bytes]) to header as zero, updated later
+        header = header_stub + b'\x00' * 7
         # Add "tail" to body
         body = body_data + b'\n\x00'
         self = cls(header, body)
@@ -51,10 +51,7 @@ class Packet:
         header_array = bytearray(self.header)
 
         # Update length indicators
-        header_array[8] = packet_length >> 24
-        header_array[9] = packet_length >> 16
-        header_array[10] = packet_length >> 8
-        header_array[11] = packet_length & 255
+        header_array[8:12] = self.int2bytes(packet_length)
 
         # Update header
         self.header = bytes(header_array)
@@ -90,6 +87,10 @@ class Packet:
     @staticmethod
     def bytes2int(b: bytes) -> int:
         return int.from_bytes(b, byteorder=HEADER_BYTE_ORDER)
+
+    @staticmethod
+    def int2bytes(i: int, length: int = 4):
+        return int.to_bytes(i, length=length, byteorder=HEADER_BYTE_ORDER)
 
     def __str__(self):
         return (self.header + self.body).__str__()
@@ -130,9 +131,7 @@ class FeslPacket(Packet):
         header_array = bytearray(self.header)
 
         # Update transaction id bytes
-        header_array[5] = tid >> 16 & 255
-        header_array[6] = tid >> 8 & 255
-        header_array[7] = tid & 255
+        header_array[5:8] = self.int2bytes(tid, length=3)
 
         self.header = bytes(header_array)
 

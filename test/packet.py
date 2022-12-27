@@ -7,7 +7,7 @@ from pybfbc2stats.packet import FeslPacket, TheaterPacket
 class FeslPacketTest(unittest.TestCase):
     def test_build(self):
         # GIVEN
-        header_stub = b'fsys\xc0\x00\x00\x00'
+        header_stub = b'fsys\xc0'
         body_data = b'TXN=Hello'
         tid = 1
 
@@ -21,7 +21,7 @@ class FeslPacketTest(unittest.TestCase):
 
     def test_build_no_tid(self):
         # GIVEN
-        header_stub = b'fsys\x80\x00\x00\x00'
+        header_stub = b'fsys\x80'
         body_data = b'TXN=MemCheck\nresult='
 
         # WHEN
@@ -147,7 +147,7 @@ class FeslPacketTest(unittest.TestCase):
 class TheaterPacketTest(unittest.TestCase):
     def test_build(self):
         # GIVEN
-        header_stub = b'GDAT@\x00\x00\x00'
+        header_stub = b'GDAT@'
         body_data = b'LID=257\nGID=123456'
         tid = 1
 
@@ -161,7 +161,7 @@ class TheaterPacketTest(unittest.TestCase):
 
     def test_build_no_tid(self):
         # GIVEN
-        header_stub = b'PING\x00\x00\x00\x00'
+        header_stub = b'PING\x00'
         body_data = b'TID=0'
 
         # WHEN
