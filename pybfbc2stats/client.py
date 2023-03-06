@@ -762,5 +762,8 @@ class TheaterClient(Client):
             # Theater returns a header starting with b'GDATngam' ("no game?") if the given
             # lobby_id-game_id combination does not exist
             is_error, error = True, ServerNotFoundError('Theater returned server not found error')
+        elif response.header[4:8] == b'bpar':
+            # Theater returns a header containing b'bpar' if parameters are not provided correctly
+            is_error, error = True, ParameterError('Theater returned bad parameter error')
 
         return is_error, error
