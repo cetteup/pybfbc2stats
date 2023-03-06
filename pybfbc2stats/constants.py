@@ -34,6 +34,24 @@ class Platform(int, Enum):
     ps3 = 3
 
 
+class TransmissionType(int, Enum):
+    pass
+
+
+class FeslTransmissionType(TransmissionType):
+    Ping = 1
+    SinglePacketResponse = 2
+    MultiPacketResponse = 3
+    SinglePacketRequest = 4
+    MultiPacketRequest = 5
+
+
+class TheaterTransmissionType(TransmissionType):
+    Request = 1
+    OKResponse = 2
+    ErrorResponse = 3
+
+
 DEFAULT_BUFFER_SIZE = 8096
 HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'

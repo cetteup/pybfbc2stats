@@ -1,7 +1,7 @@
 from typing import List, Optional, Any
 
 from .constants import HEADER_LENGTH, VALID_HEADER_TYPES_FESL, VALID_HEADER_TYPES_THEATER, \
-    VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER
+    VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER, TransmissionType, FeslTransmissionType, TheaterTransmissionType
 from .exceptions import Error
 
 
@@ -14,22 +14,31 @@ class Packet:
         self.body = body
 
     @classmethod
-    def build(cls, header_stub: bytes, body_data: bytes, tid: Optional[int] = None):
+    def build(cls, header_stub: bytes, body_data: bytes, transmission_type: TransmissionType, tid: Optional[int] = None):
         """
         Build and return a new packet from a given header stub (first 8 header bytes) and the given body data
-        :param header_stub: First 5 bytes of the packet header
+        :param header_stub: Packet header stub, consisting of at least the first 4 bytes
         :param body_data: Data to use as packet body
+        :param transmission_type: Transmission type the packet is a part of (e.g. FeslTransmissionType.MultiPacketRequest)
         :param tid: Transaction id for packet
         :return: New packet with valid length indicators
         """
-        # Add remaining 7 bytes (tid [3 bytes, FESL only], length indicator [4 bytes]) to header as zero, updated later
-        header = header_stub + b'\x00' * 7
+
+        """
+        Add any missing header bytes as zero now and update later:
+        - transmission type [1 byte]
+        - tid [3 bytes, relevant only for FESL]
+        - length indicator [4 bytes]
+        """
+        header = header_stub + b'\x00' * (HEADER_LENGTH - len(header_stub))
         # Add "tail" to body
         body = body_data + b'\n\x00'
         self = cls(header, body)
-        # Update transaction id if present
+        # Update transaction id if given
         if tid is not None:
             self.set_tid(tid)
+        # Update transmission type
+        self.set_transmission_type(transmission_type)
         # Update length indicators
         self.set_length_indicators()
         return self
@@ -54,6 +63,13 @@ class Packet:
         pass
 
     def get_tid(self) -> int:
+        pass
+
+    def set_transmission_type(self, transmission_type: TransmissionType) -> None:
+        pass
+
+    def get_transmission_type(self) -> TransmissionType:
+        """Determine the type of transmission this packet is a part of based on the fifth header byte"""
         pass
 
     def set_length_indicators(self) -> None:
@@ -158,14 +174,45 @@ class FeslPacket(Packet):
         """
         return self.bytes2int(self.header[5:8])
 
+    def set_transmission_type(self, transmission_type: TransmissionType) -> None:
+        header_array = bytearray(self.header)
+        if transmission_type is FeslTransmissionType.Ping:
+            header_array[4:5] = b'\x00'
+        elif transmission_type is FeslTransmissionType.SinglePacketResponse:
+            header_array[4:5] = b'\x80'
+        elif transmission_type is FeslTransmissionType.MultiPacketResponse:
+            header_array[4:5] = b'\xb0'
+        elif transmission_type is FeslTransmissionType.SinglePacketRequest:
+            header_array[4:5] = b'\xc0'
+        elif transmission_type is FeslTransmissionType.MultiPacketRequest:
+            header_array[4:5] = b'\xf0'
+
+        self.header = bytes(header_array)
+
+    def get_transmission_type(self) -> TransmissionType:
+        b = self.header[4:5]
+        if b == b'\x00':
+            return FeslTransmissionType.Ping
+        elif b == b'\x80':
+            return FeslTransmissionType.SinglePacketResponse
+        elif b == b'\xb0':
+            return FeslTransmissionType.MultiPacketResponse
+        elif b == b'\xc0':
+            return FeslTransmissionType.SinglePacketRequest
+        elif b == b'\xf0':
+            return FeslTransmissionType.MultiPacketRequest
+        else:
+            # Should never be raised, since packets are validated before accessing the transmission type
+            raise Error('Unknown packet transmission type')
+
     def validate_header(self) -> None:
         super().validate_header()
 
         """
         Any valid FESL header also
         and
-          starts with a valid type (e.g. "rank") which is
-          followed by a valid packet type/count indicator:
+          starts with a valid data type (e.g. "rank") which is
+          followed by a valid transmission type indicator:
             \x00 = ping packet
             \x80 = single packet response
             \xb0 = multi packet response
@@ -199,13 +246,35 @@ class TheaterPacket(Packet):
 
         return int(tid_bytes)
 
+    def set_transmission_type(self, transmission_type: TransmissionType) -> None:
+        header_array = bytearray(self.header)
+        # Cannot realistically set error response type here, since it could be any error
+        if transmission_type is TheaterTransmissionType.Request:
+            header_array[4:8] = b'@\x00\x00\x00'
+        elif transmission_type is TheaterTransmissionType.OKResponse:
+            header_array[4:8] = b'\x00\x00\x00\x00'
+
+        self.header = bytes(header_array)
+
+    def get_transmission_type(self) -> TransmissionType:
+        b = self.header[4:8]
+        if b == b'@\x00\x00\x00':
+            return TheaterTransmissionType.Request
+        elif b == b'\x00\x00\x00\x00':
+            return TheaterTransmissionType.OKResponse
+        elif b in VALID_HEADER_ERROR_INDICATORS:
+            return TheaterTransmissionType.ErrorResponse
+        else:
+            # Should never be raised, since packets are validated before accessing the transmission type
+            raise Error('Unknown packet transmission type')
+
     def validate_header(self) -> None:
         super().validate_header()
 
         """
         Any valid theater header also
         and
-          starts with a valid type (e.g. "GDAT") which is
+          starts with a valid data type (e.g. "GDAT") which is
           or
             followed by @\x00\x00\x00 (64 followed by 3 zero bytes, indicating a request)
             followed by \x00\x00\x00\x00 (4 zero bytes, indicating no-error/success response)

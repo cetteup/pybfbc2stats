@@ -1,18 +1,20 @@
 import unittest
 
 from pybfbc2stats import Error
+from pybfbc2stats.constants import FeslTransmissionType, TheaterTransmissionType
 from pybfbc2stats.packet import FeslPacket, TheaterPacket
 
 
 class FeslPacketTest(unittest.TestCase):
     def test_build(self):
         # GIVEN
-        header_stub = b'fsys\xc0'
+        header_stub = b'fsys'
         body_data = b'TXN=Hello'
+        transmission_type = FeslTransmissionType.SinglePacketRequest
         tid = 1
 
         # WHEN
-        packet = FeslPacket.build(header_stub, body_data, tid)
+        packet = FeslPacket.build(header_stub, body_data, transmission_type, tid)
 
         # THEN
         expected = FeslPacket(b'fsys\xc0\x00\x00\x01\x00\x00\x00\x17', b'TXN=Hello\n\x00')
@@ -21,11 +23,12 @@ class FeslPacketTest(unittest.TestCase):
 
     def test_build_no_tid(self):
         # GIVEN
-        header_stub = b'fsys\x80'
+        header_stub = b'fsys'
         body_data = b'TXN=MemCheck\nresult='
+        transmission_type = FeslTransmissionType.SinglePacketResponse
 
         # WHEN
-        packet = FeslPacket.build(header_stub, body_data)
+        packet = FeslPacket.build(header_stub, body_data, transmission_type)
 
         # THEN
         expected = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00"', b'TXN=MemCheck\nresult=\n\x00')
@@ -147,12 +150,13 @@ class FeslPacketTest(unittest.TestCase):
 class TheaterPacketTest(unittest.TestCase):
     def test_build(self):
         # GIVEN
-        header_stub = b'GDAT@'
+        header_stub = b'GDAT'
         body_data = b'LID=257\nGID=123456'
+        transmission_type = TheaterTransmissionType.Request
         tid = 1
 
         # WHEN
-        packet = TheaterPacket.build(header_stub, body_data, tid)
+        packet = TheaterPacket.build(header_stub, body_data, transmission_type, tid)
 
         # THEN
         expected = TheaterPacket(b'GDAT@\x00\x00\x00\x00\x00\x00&', b'LID=257\nGID=123456\nTID=1\n\x00')
@@ -161,11 +165,12 @@ class TheaterPacketTest(unittest.TestCase):
 
     def test_build_no_tid(self):
         # GIVEN
-        header_stub = b'PING\x00'
+        header_stub = b'PING'
         body_data = b'TID=0'
+        transmission_type = TheaterTransmissionType.OKResponse
 
         # WHEN
-        packet = TheaterPacket.build(header_stub, body_data)
+        packet = TheaterPacket.build(header_stub, body_data, transmission_type)
 
         # THEN
         expected = TheaterPacket(b'PING\x00\x00\x00\x00\x00\x00\x00\x13', b'TID=0\n\x00')

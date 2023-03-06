@@ -222,7 +222,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         last_packet = False
         while not last_packet:
             packet = await self.wrapped_read(tid)
-            data, last_packet = self.handle_list_response_packet(packet, list_entry_prefix)
+            data, last_packet = self.handle_list_response_packet(packet)
             response += data
 
         return self.parse_list_response(response, list_entry_prefix)
