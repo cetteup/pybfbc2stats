@@ -57,7 +57,7 @@ HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'
 VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank']
 VALID_HEADER_TYPES_THEATER = [b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']
-VALID_HEADER_ERROR_INDICATORS = [b'ngam', b'nrom', b'bpar']
+VALID_HEADER_ERROR_INDICATORS = [b'ngam', b'nrom', b'bpar', b'ntfn']
 BACKEND_DETAILS = {
     Platform.pc: {
         'host': 'bfbc2-pc-server.fesl.ea.com',

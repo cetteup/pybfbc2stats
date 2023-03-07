@@ -340,20 +340,19 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return servers
 
     async def get_server_details(self, lobby_id: int, game_id: int) -> Tuple[dict, dict, List[dict]]:
-        """
-        Retrieve full details and player list for a given server
-        :param lobby_id: If of the game server lobby the server is hosted in
-        :param game_id: Game (server) id
-        :return: Tuple of (general server details, extended details, player list)
-        """
+        return await self.get_gdat(lid=str(lobby_id).encode('utf8'), gid=str(game_id).encode('utf8'))
+
+    async def get_current_server(self, user_id: int) -> Tuple[dict, dict, List[dict]]:
+        return await self.get_gdat(uid=str(user_id).encode('utf8'))
+
+    async def get_gdat(self, **kwargs: bytes) -> Tuple[dict, dict, List[dict]]:
         if self.track_steps and TheaterStep.user not in self.completed_steps:
             await self.authenticate()
 
         tid = self.get_transaction_id()
         server_details_packet = self.build_gdat_packet(
             tid,
-            str(lobby_id).encode('utf8'),
-            str(game_id).encode('utf8')
+            **kwargs
         )
         await self.connection.write(server_details_packet)
 

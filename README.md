@@ -427,7 +427,7 @@ Retrieve full details and player list for a given server.
 
   Argument     | Type | Opt/Required | Note
 ---------------|------|--------------|-----
-lobby_id       | int  | Required     | If of the game server lobby the server is hosted in
+lobby_id       | int  | Required     | Id of the game server lobby the server is hosted in
 game_id        | int  | Required     | Game (server) id
 
 **Example**
@@ -437,4 +437,26 @@ from pybfbc2stats import TheaterClient, Platform
 
 client = TheaterClient('bfbc2-ps3-server.theater.ea.com', 18336, 'your_lkey', Platform.ps3)
 general, detailed, players = client.get_server_details(257, 120018)
+```
+
+----
+
+#### \[Async\]TheaterClient.get_current_server(user_id)
+
+Retrieve full details and player list for a given user's current server (server they are currently playing on, 
+raises a PlayerNotFound exception if the player is not currently playing online).
+
+**Arguments**
+
+  Argument     | Type | Opt/Required | Note
+---------------|------|--------------|-----
+user_id       | int  | Required     | Id of the user whose current server to get
+
+**Example**
+
+```python
+from pybfbc2stats import TheaterClient, Platform
+
+client = TheaterClient('bfbc2-ps3-server.theater.ea.com', 18336, 'your_lkey', Platform.ps3)
+general, detailed, players = client.get_current_server(227528903)
 ```

@@ -631,15 +631,37 @@ class TheaterClient(Client):
     def get_server_details(self, lobby_id: int, game_id: int) -> Tuple[dict, dict, List[dict]]:
         """
         Retrieve full details and player list for a given server
-        :param lobby_id: If of the game server lobby the server is hosted in
+        :param lobby_id: Id of the game server lobby the server is hosted in
         :param game_id: Game (server) id
+        :return: Tuple of (general server details, extended details, player list)
+        """
+        return self.get_gdat(lid=str(lobby_id).encode('utf8'), gid=str(game_id).encode('utf8'))
+
+    def get_current_server(self, user_id: int) -> Tuple[dict, dict, List[dict]]:
+        """
+        Retrieve full details and player list for a given user's current server (server they are currently playing on,
+        raises a PlayerNotFound exception if the player is not currently playing online)
+        :param user_id: Id of the user whose current server to get
+        :return: Tuple of (general server details, extended details, player list)
+        """
+        return self.get_gdat(uid=str(user_id).encode('utf8'))
+
+    def get_gdat(self, **kwargs: bytes)  -> Tuple[dict, dict, List[dict]]:
+        """
+        Get GDAT for an individual server
+        :param kwargs: Id(s) to identify the game (server):
+            a) id of lobby the game server is hosted in (lid) and Id of the game server or (gid)
+            b) id of user for which the current server should be returned (uid)
         :return: Tuple of (general server details, extended details, player list)
         """
         if self.track_steps and TheaterStep.user not in self.completed_steps:
             self.authenticate()
 
         tid = self.get_transaction_id()
-        server_details_packet = self.build_gdat_packet(tid, str(lobby_id).encode('utf8'), str(game_id).encode('utf8'))
+        server_details_packet = self.build_gdat_packet(
+            tid,
+            **kwargs
+        )
         self.connection.write(server_details_packet)
 
         # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
@@ -749,17 +771,21 @@ class TheaterClient(Client):
         )
 
     @staticmethod
-    def build_gdat_packet(tid: int, lid: bytes, gid: bytes) -> TheaterPacket:
+    def build_gdat_packet(tid: int, **kwargs: bytes) -> TheaterPacket:
         """
         Build the gdat/game (server) detailed data packet
         :param tid: Transaction id
-        :param lid: Id of lobby the game server is hosted in
-        :param gid: Id of the game server
+        :param kwargs: Id(s) to identify the game (server):
+            a) id of lobby the game server is hosted in (lid) and Id of the game server or (gid)
+            b) id of user for which the current server should be returned (uid)
         :return: Complete packet to retrieve detailed data for the game server
         """
         return TheaterPacket.build(
             b'GDAT',
-            b'LID=' + lid + b'\nGID=' + gid,
+            b'\n'.join(
+                key.upper().encode('utf8') + b'=' + value
+                for (key, value) in kwargs.items()
+            ),
             TheaterTransmissionType.Request,
             tid
         )
@@ -774,12 +800,16 @@ class TheaterClient(Client):
         if response.header.startswith(b'GLSTnrom'):
             # Theater returns a header starting with b'GLSTnrom' ("no room"?, room=lobby?) if the given
             # lobby_id does not exist (only applies to retrieving server lists from lobby,
-            # individual server queries return the above b'GDATngam' instead)
+            # individual server queries return the below b'GDATngam' instead)
             is_error, error = True, LobbyNotFoundError('Theater returned lobby not found error')
         elif response.header.startswith(b'GDATngam'):
-            # Theater returns a header starting with b'GDATngam' ("no game?") if the given
+            # Theater returns a header starting with b'GDATngam' ("no game"?) if the given
             # lobby_id-game_id combination does not exist
             is_error, error = True, ServerNotFoundError('Theater returned server not found error')
+        elif response.header.startswith(b'GDATntfn'):
+            # Theater return a header starting with b'GDATntfn' ("not found"?) both if the user whose uid was given
+            # is not currently playing on any server and if no user with that id exists
+            is_error, error = True, PlayerNotFoundError('Theater returned player not found/not online error')
         elif response.header[4:8] == b'bpar':
             # Theater returns a header containing b'bpar' if parameters are not provided correctly
             is_error, error = True, ParameterError('Theater returned bad parameter error')
