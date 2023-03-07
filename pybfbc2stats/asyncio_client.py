@@ -21,11 +21,6 @@ class AsyncClient(Client):
         await self.connection.close()
 
     async def wrapped_read(self, tid: int) -> Packet:
-        """
-        Read a single packet from the connection and automatically respond plus read next packet if the initial packet
-        was one that requires an immediate response (memcheck, ping)
-        :return: A packet containing "real" data
-        """
         initial_packet = await self.connection.read()
 
         # Check packet is not a "real" data packet but one that prompts a response (memcheck, ping)
@@ -237,10 +232,6 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         self.lkey = lkey.encode('utf8')
 
     async def connect(self) -> bytes:
-        """
-        Initialize the connection to the Theater backend by sending the initial CONN/hello packet
-        :return: Response packet data
-        """
         if self.track_steps and TheaterStep.conn in self.completed_steps:
             return bytes(self.completed_steps[TheaterStep.conn])
 
@@ -254,10 +245,6 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return bytes(response)
 
     async def authenticate(self) -> bytes:
-        """
-        Authenticate against/log into the Theater backend using the lkey retrieved via FESL
-        :return: Response packet data
-        """
         if self.track_steps and TheaterStep.user in self.completed_steps:
             return bytes(self.completed_steps[TheaterStep.user])
         elif self.track_steps and TheaterStep.conn not in self.completed_steps:
@@ -281,10 +268,6 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         await self.connection.write(ping_packet)
 
     async def get_lobbies(self) -> List[dict]:
-        """
-        Retrieve all available game (server) lobbies
-        :return: List of lobby details
-        """
         if self.track_steps and TheaterStep.user not in self.completed_steps:
             await self.authenticate()
 
@@ -308,11 +291,6 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return lobbies
 
     async def get_servers(self, lobby_id: int) -> List[dict]:
-        """
-        Retrieve all available game servers from the given lobby
-        :param lobby_id: Id of the game server lobby
-        :return: List of server details
-        """
         if self.track_steps and TheaterStep.user not in self.completed_steps:
             await self.authenticate()
 
