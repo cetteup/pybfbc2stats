@@ -75,7 +75,7 @@ class AsyncConnection(Connection):
                     packet.validate_header()
 
             # Append any remaining data to body
-            packet.body += iteration_buffer.get_buffer()
+            packet.body += iteration_buffer.remaining()
 
             # Update timestamp if any data was retrieved during current iteration
             if iteration_buffer.length > 0:

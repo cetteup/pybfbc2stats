@@ -2,11 +2,12 @@ from base64 import b64encode, b64decode
 from typing import List, Union, Dict, Tuple, Optional, Callable
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
+from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
-    DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType
+    DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
-    SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError
+    SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError
 from .packet import Packet, FeslPacket, TheaterPacket
 
 
@@ -202,7 +203,8 @@ class FeslClient(Client):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         self.connection.write(lookup_packet)
 
-        parsed_response, *_ = self.get_list_response(tid, b'userInfo.')
+        raw_response = self.get_complex_response(tid)
+        parsed_response, _ = self.parse_list_response(raw_response, b'userInfo.')
         return parsed_response
 
     def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
@@ -221,7 +223,8 @@ class FeslClient(Client):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         self.connection.write(search_packet)
 
-        parsed_response, metadata = self.get_list_response(tid, b'users.')
+        raw_response = self.get_complex_response(tid)
+        parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
     def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
@@ -234,7 +237,8 @@ class FeslClient(Client):
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        parsed_response, *_ = self.get_list_response(tid, b'stats.')
+        raw_response = self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -246,10 +250,24 @@ class FeslClient(Client):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        parsed_response, *_ = self.get_list_response(tid, b'stats.')
+        raw_response = self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
+
+    def get_dogtags(self, userid: int) -> List[dict]:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
+            self.login()
+
+        tid = self.get_transaction_id()
+        dogtags_packet = self.build_dogtag_query_packet(tid, userid)
+        self.connection.write(dogtags_packet)
+
+        raw_response = self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_map_response(raw_response, b'values.')
+        return self.format_dogtags_response(parsed_response, self.platform)
+
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         is_auto_respond_packet, handler = False, None
@@ -264,15 +282,15 @@ class FeslClient(Client):
 
         return is_auto_respond_packet, handler
 
-    def get_list_response(self, tid: int, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    def get_complex_response(self, tid: int) -> bytes:
         response = b''
         last_packet = False
         while not last_packet:
             packet = self.wrapped_read(tid)
-            data, last_packet = self.handle_list_response_packet(packet)
+            data, last_packet = self.process_complex_response_packet(packet)
             response += data
 
-        return self.parse_list_response(response, list_entry_prefix)
+        return response
 
     @staticmethod
     def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes) -> bytes:
@@ -406,6 +424,16 @@ class FeslClient(Client):
         return chunk_packets
 
     @staticmethod
+    def build_dogtag_query_packet(tid: int, userid: int) -> FeslPacket:
+        return FeslPacket.build(
+            b'recp',
+            # Could also use GetRecord to receive a list
+            b'TXN=GetRecordAsMap\nrecordName=dogtags\nowner=' + str(userid).encode('utf8'),
+            FeslTransmissionType.SinglePacketRequest,
+            tid
+        )
+
+    @staticmethod
     def is_valid_login_response(response: Packet) -> Tuple[bool, str]:
         valid = b'lkey=' in response.body
         if not valid:
@@ -417,23 +445,13 @@ class FeslClient(Client):
         return valid, message
 
     @staticmethod
-    def parse_list_response(raw_response: bytes, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
-        lines = raw_response.split(b'\n')
-        # Assign lines to either data or meta lines
-        meta_lines = []
-        data_lines = []
-        for line in lines:
-            if line.startswith(list_entry_prefix) and list_entry_prefix + b'[]' not in line:
-                # Append data line (without entry prefix)
-                # So for userInfo.0.userId=226804555, only add 0.userId=226804555 (assuming prefix is userInfo.)
-                data_lines.append(line[len(list_entry_prefix):])
-            else:
-                # Add meta data lines as is
-                meta_lines.append(line)
+    def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+        data_lines, meta_lines, entry_count = FeslClient.pre_parse_complex_response(
+            raw_response,
+            entry_prefix,
+            StructuredDataType.list
+        )
 
-        # Determine data entry count
-        length_info = next(line for line in meta_lines if b'.[]' in line)
-        entry_count = int(length_info.split(b'=').pop())
         # Init dict list
         datasets = [{} for _ in range(0, entry_count)]
         # Sort reverse to get sub-list length indicators first
@@ -462,7 +480,52 @@ class FeslClient(Client):
         return datasets, meta_lines
 
     @staticmethod
-    def handle_list_response_packet(packet: Packet) -> Tuple[bytes, bool]:
+    def parse_map_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[Dict[str, bytes], List[bytes]]:
+        data_lines, meta_lines, entry_count = FeslClient.pre_parse_complex_response(
+            raw_response,
+            entry_prefix,
+            StructuredDataType.map
+        )
+
+        dataset = {}
+        for line in data_lines:
+            raw_key, _, raw_value = line.partition(b'=')
+            # Remove map braces from key
+            key = raw_key.strip(b'{}').decode()
+            # Values are URL quoted and b64 encoded (in addition to the data in the packet being quoted and encoded)
+            value = b64decode(unquote_to_bytes(raw_value))
+            dataset[key] = value
+
+        return dataset, meta_lines
+
+
+    @staticmethod
+    def pre_parse_complex_response(
+            raw_response: bytes,
+            entry_prefix: bytes,
+            structure: StructuredDataType
+    ) -> Tuple[List[bytes], List[bytes], int]:
+        lines = raw_response.split(b'\n')
+        # Assign lines to either data or meta lines
+        meta_lines = []
+        data_lines = []
+        for line in lines:
+            if line.startswith(entry_prefix) and entry_prefix + structure not in line:
+                # Append data line (without entry prefix)
+                # So for userInfo.0.userId=226804555, only add 0.userId=226804555 (assuming prefix is userInfo.)
+                data_lines.append(line[len(entry_prefix):])
+            else:
+                # Add meta data lines as is
+                meta_lines.append(line)
+
+        # Determine data entry count
+        length_info = next(line for line in meta_lines if b'.' + structure in line)
+        entry_count = int(length_info.split(b'=').pop())
+
+        return data_lines, meta_lines, entry_count
+
+    @staticmethod
+    def process_complex_response_packet(packet: Packet) -> Tuple[bytes, bool]:
         # Fifth byte indicates whether packet is single/multi packet request/response or ping packet
         transmission_type = packet.get_transmission_type()
         body = packet.get_data()
@@ -481,6 +544,8 @@ class FeslClient(Client):
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
                 raise SearchError('FESL found no or too many results matching the search query')
+            elif error_code == b'5000' and method.startswith(b'GetRecord'):
+                raise RecordNotFoundError('FESL returned record not found error')
             else:
                 raise Error(f'FESL returned an error (code {error_code.decode("utf")})')
         elif transmission_type is not FeslTransmissionType.SinglePacketResponse and \
@@ -513,6 +578,39 @@ class FeslClient(Client):
             'namespace': namespace.decode('utf8'),
             'users': parsed_response
         }
+
+    @staticmethod
+    def format_dogtags_response(parsed_response: Dict[str, bytes], platform: Platform) -> List[dict]:
+        results = []
+        for key, value in parsed_response.items():
+            """
+            Value format seems a bit odd here (who knows, maybe it was obvious do whoever built it at DICE)
+            Note: Different platforms (seem to) use different byte orders (ps3: big, pc: little)
+            - player name, often but not always followed by a bunch of null bytes
+            - 4 bytes, meaning unknown (could be an int [record id?], since order seems to be flipped on PC vs. PS3 => byte order)
+            - 2 bytes, number of bronze dogtags taken from player
+            - 2 bytes, number of silver dogtags taken from player
+            - 2 bytes, number of gold dogtags taken from player
+            - 2 bytes, meaning unknown
+            Since there seems to no delimiter or anything for the name, we cannot determine it's length
+            => just read from in reverse and take remainder as name (stripping the null bytes)
+            """
+            byte_order = ByteOrder.LittleEndian if platform is Platform.pc else ByteOrder.BigEndian
+            buffer = Buffer(value, byte_order)
+            buffer.reverse()
+            buffer.skip(2)
+            bronze, silver, gold = buffer.read_ushort(), buffer.read_ushort(), buffer.read_ushort()
+            buffer.skip(4)
+            raw_name = buffer.remaining()
+            results.append({
+                'userId': key,
+                'userName': raw_name.strip(b'\x00').decode('utf8'),
+                'bronze': bronze,
+                'silver': silver,
+                'gold': gold
+            })
+
+        return results
 
 
 class TheaterClient(Client):

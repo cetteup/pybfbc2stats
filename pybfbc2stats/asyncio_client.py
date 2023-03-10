@@ -163,7 +163,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
-        parsed_response, *_ = await self.get_list_response(tid, b'userInfo.')
+        raw_response = await self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_list_response(raw_response, b'userInfo.')
         return parsed_response
 
     async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
@@ -182,7 +183,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         await self.connection.write(search_packet)
 
-        parsed_response, metadata = await self.get_list_response(tid, b'users.')
+        raw_response = await self.get_complex_response(tid)
+        parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
     async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
@@ -195,7 +197,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        parsed_response, *_ = await self.get_list_response(tid, b'stats.')
+        raw_response = await self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
         return self.dict_list_to_dict(parsed_response)
 
     async def get_leaderboard(self, min_rank: int = 1, max_rank: int = 50, sort_by: bytes = b'score',
@@ -207,20 +210,33 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
-        parsed_response, *_ = await self.get_list_response(tid, b'stats.')
+        raw_response = await self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
         # Turn sub lists into dicts and return result
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    async def get_list_response(self, tid: int, list_entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+    async def get_dogtags(self, userid: int) -> List[dict]:
+        if self.track_steps and FeslStep.login not in self.completed_steps:
+            await self.login()
+
+        tid = self.get_transaction_id()
+        dogtags_packet = self.build_dogtag_query_packet(tid, userid)
+        await self.connection.write(dogtags_packet)
+
+        raw_response = await self.get_complex_response(tid)
+        parsed_response, *_ = self.parse_map_response(raw_response, b'values.')
+        return self.format_dogtags_response(parsed_response, self.platform)
+
+    async def get_complex_response(self, tid: int) -> bytes:
         response = b''
         last_packet = False
         while not last_packet:
             packet = await self.wrapped_read(tid)
-            data, last_packet = self.handle_list_response_packet(packet)
+            data, last_packet = self.process_complex_response_packet(packet)
             response += data
 
-        return self.parse_list_response(response, list_entry_prefix)
+        return response
 
 
 class AsyncTheaterClient(TheaterClient, AsyncClient):

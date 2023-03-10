@@ -27,6 +27,11 @@ class LookupType(bytes, Enum):
     byId = b'userId'
 
 
+class StructuredDataType(bytes, Enum):
+    list = b'[]'
+    map = b'{}'
+
+
 class Platform(int, Enum):
     pc = 1
     # XBOX is not yet supported
@@ -55,7 +60,7 @@ class TheaterTransmissionType(TransmissionType):
 DEFAULT_BUFFER_SIZE = 8096
 HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'
-VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank']
+VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank', b'recp']
 VALID_HEADER_TYPES_THEATER = [b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']
 VALID_HEADER_ERROR_INDICATORS = [b'ngam', b'nrom', b'bpar', b'ntfn']
 BACKEND_DETAILS = {

@@ -355,6 +355,29 @@ leaderboard = client.get_leaderboard(1, 50, b'time')
 
 ----
 
+#### \[Async\]FeslClient.get_dogtags(userid)
+
+Retrieve a list of players the given player id has taken dogtags from.
+
+**Note**: The FESL backend returns an error both if a) the given user id does not exist and b) the user has not yet taken any dogtags.
+
+**Arguments**
+
+  Argument     | Type | Opt/Required
+---------------|------|--------------
+`userid`       | int  | Required
+
+**Example**
+
+```python
+from pybfbc2stats import FeslClient, Platform
+
+client = FeslClient('ea_account_name', 'ea_account_password', Platform.ps3)
+dogtags = client.get_dogtags(223789857)
+```
+
+----
+
 #### \[Async\]TheaterClient(host, port, lkey, platform, timeout)
 
 Create a new [Async]TheaterClient instance.

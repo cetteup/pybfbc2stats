@@ -26,6 +26,10 @@ class PlayerNotFoundError(NotFoundError):
     pass
 
 
+class RecordNotFoundError(NotFoundError):
+    pass
+
+
 class LobbyNotFoundError(NotFoundError):
     pass
 
