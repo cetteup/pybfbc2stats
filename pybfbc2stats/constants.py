@@ -148,7 +148,7 @@ STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br4
               b'c_cav__si_g', b'c_cobr__ddw_g', b'c_cobr__si_g', b'c_de__da_g', b'c_defi__kw_g', b'c_defi__sfw_g',
               b'c_defi__shw_g', b'c_defi__sw_g', b'c_deml__kw_g', b'c_deml__sfw_g', b'c_deml__shw_g', b'c_deml__sw_g', b'c_di01_m16k__kw_g', b'c_di02_umpk__kw_g', b'c_di03_mg3k__kw_g', b'c_di04_m95k__kw_g', b'c_f2000__kw_g', b'c_f2000__sfw_g',
               b'c_f2000__shw_g', b'c_f2000__sw_g', b'c_g3__kw_g', b'c_g3__sfw_g', b'c_g3__shw_g', b'c_g3__sw_g',
-              b'c_gol__kw_g', b'c_gol__sfw_g', b'c_gol__shw_g', b'c_gol__sw_g', b'c_gaz69v__ddw_g', b'c_gaz69v__si_g',
+              b'c_gaz69v__ddw_g', b'c_gaz69v__si_g',
               b'c_go40mmgl_40mmgl__kw_g', b'c_go40mmsg_40mmsg__kw_g', b'c_go9a91_9a91__kw_g', b'c_goaek_aek__kw_g',
               b'c_goair__air_ki_g', b'c_goak47v_ak47v__kw_g', b'c_goaks74u_aks74u__kw_g', b'c_goan94_an94__kw_g',
               b'c_goarm__arm_ki_g', b'c_goatm_atm__kw_g', b'c_goaug_aug__kw_g', b'c_goc4_c4__kw_g',
