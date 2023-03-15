@@ -804,7 +804,7 @@ class TheaterClient(Client):
         """
         return TheaterPacket.build(
             b'CONN',
-            b'PROT=2\nPROD=' + client_string + b'\nVERS=1.1\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.0.0.0.0',
+            b'PROT=2\nPROD=' + client_string + b'\nVERS=1.0\nPLAT=PC\nLOCALE=en_US\nSDKVERSION=5.1.2.0.0',
             TheaterTransmissionType.Request,
             tid
         )
