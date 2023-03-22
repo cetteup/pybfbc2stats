@@ -604,7 +604,11 @@ class FeslClient(Client):
             raw_name = buffer.remaining()
             results.append({
                 'userId': key,
-                'userName': raw_name.strip(b'\x00').decode('utf8'),
+                # FESL returns mangled, incorrect names in extremely rare cases
+                # e.g. b'\xac\x1d5\x08Dvil07\x00\x00\x00\x00\x00\x00' for pid battlefield/272333965,
+                # whose actual name is 'DarkDvil07' as per a direct lookup
+                # => ignore any decoding errors
+                'userName': raw_name.strip(b'\x00').decode('utf8', 'ignore'),
                 'bronze': bronze,
                 'silver': silver,
                 'gold': gold
