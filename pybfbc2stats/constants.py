@@ -34,8 +34,7 @@ class StructuredDataType(bytes, Enum):
 
 class Platform(int, Enum):
     pc = 1
-    # XBOX is not yet supported
-    # xbox360 = 2
+    xbox360 = 2
     ps3 = 3
 
 
@@ -68,6 +67,11 @@ BACKEND_DETAILS = {
         'host': 'bfbc2-pc-server.fesl.ea.com',
         'port': 18321,
         'clientString': b'bfbc2-pc'
+    },
+    Platform.xbox360: {
+        'host': '159.153.64.190',
+        'port': 18341,
+        'clientString': b'bfbc2-360'
     },
     Platform.ps3: {
         'host': 'bfbc2-ps3-server.fesl.ea.com',
