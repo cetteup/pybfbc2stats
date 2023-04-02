@@ -69,7 +69,7 @@ BACKEND_DETAILS = {
         'clientString': b'bfbc2-pc'
     },
     Platform.xbox360: {
-        'host': '159.153.64.190',
+        'host': '159.153.64.190', # bfbc2-xbox-server.fesl.ea.com
         'port': 18341,
         'clientString': b'bfbc2-360'
     },

@@ -242,7 +242,12 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 class AsyncTheaterClient(TheaterClient, AsyncClient):
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = AsyncConnection(host, port, TheaterPacket)
+        connection = AsyncConnection(
+            # Override host for Xbox 360, since the hostname resolves to a private IP address
+            '159.153.64.191' if host == 'bfbc2-360-server.theater.ea.com' else host,
+            port,
+            TheaterPacket
+        )
         # "Skip" TheaterClient constructor, for details see note in AsyncFeslClient.__init__
         super(TheaterClient, self).__init__(connection, platform, timeout, track_steps)
         self.lkey = lkey.encode('utf8')
