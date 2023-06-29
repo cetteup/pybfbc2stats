@@ -13,14 +13,23 @@ from .packet import Packet, FeslPacket, TheaterPacket
 
 class Client:
     platform: Platform
+    client_string: bytes
     timeout: float
     track_steps: bool
     connection: Connection
     transaction_id: int
     completed_steps: Dict[Step, Packet]
 
-    def __init__(self, connection: Connection, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
+    def __init__(
+            self,
+            connection: Connection,
+            platform: Platform,
+            client_string: bytes,
+            timeout: float = 3.0,
+            track_steps: bool = True
+    ):
         self.platform = platform
+        self.client_string = client_string
         self.track_steps = track_steps
         self.connection = connection
         # Using the client with too short of a timeout leads to lots if issues with reads timing out and subsequent
@@ -100,7 +109,7 @@ class FeslClient(Client):
             BACKEND_DETAILS[platform]['port'],
             FeslPacket
         )
-        super().__init__(connection, platform, timeout, track_steps)
+        super().__init__(connection, platform, BACKEND_DETAILS[platform]['clientString'], timeout, track_steps)
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
 
@@ -113,7 +122,7 @@ class FeslClient(Client):
             return bytes(self.completed_steps[FeslStep.hello])
 
         tid = self.get_transaction_id()
-        hello_packet = self.build_hello_packet(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        hello_packet = self.build_hello_packet(tid, self.client_string)
         self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -624,7 +633,7 @@ class TheaterClient(Client):
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         connection = Connection(host, port, TheaterPacket)
-        super().__init__(connection, platform, timeout, track_steps)
+        super().__init__(connection, platform, BACKEND_DETAILS[platform]['clientString'], timeout, track_steps)
         self.lkey = lkey.encode('utf8')
 
     def connect(self) -> bytes:
@@ -636,7 +645,7 @@ class TheaterClient(Client):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
-        connect_packet = self.build_conn_paket(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        connect_packet = self.build_conn_paket(tid, self.client_string)
         self.connection.write(connect_packet)
 
         response = self.connection.read()

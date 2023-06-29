@@ -11,8 +11,15 @@ from .packet import Packet, FeslPacket, TheaterPacket
 class AsyncClient(Client):
     connection: AsyncConnection
 
-    def __init__(self, connection: AsyncConnection, platform: Platform, timeout: float = 3.0, track_steps: bool = True):
-        super().__init__(connection, platform, timeout, track_steps)
+    def __init__(
+            self,
+            connection: AsyncConnection,
+            platform: Platform,
+            client_string: bytes,
+            timeout: float = 3.0,
+            track_steps: bool = True
+    ):
+        super().__init__(connection, platform, client_string, timeout, track_steps)
 
     async def __aenter__(self):
         return self
@@ -56,7 +63,13 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         __init__ function with parameters that make no sense. If we instead use super(FeslClient, self), we call
         FeslClient's super directly - effectively skipping the FeslClient constructor
         """
-        super(FeslClient, self).__init__(connection, platform, timeout, track_steps)
+        super(FeslClient, self).__init__(
+            connection,
+            platform,
+            BACKEND_DETAILS[platform]['clientString'],
+            timeout,
+            track_steps
+        )
         self.username = username.encode('utf8')
         self.password = password.encode('utf8')
 
@@ -72,7 +85,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
             return bytes(self.completed_steps[FeslStep.hello])
 
         tid = self.get_transaction_id()
-        hello_packet = self.build_hello_packet(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        hello_packet = self.build_hello_packet(tid, self.client_string)
         await self.connection.write(hello_packet)
 
         # FESL sends hello response immediately followed initial memcheck => read both and return hello response
@@ -244,7 +257,13 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
                  track_steps: bool = True):
         connection = AsyncConnection(host, port, TheaterPacket)
         # "Skip" TheaterClient constructor, for details see note in AsyncFeslClient.__init__
-        super(TheaterClient, self).__init__(connection, platform, timeout, track_steps)
+        super(TheaterClient, self).__init__(
+            connection,
+            platform,
+            BACKEND_DETAILS[platform]['clientString'],
+            timeout,
+            track_steps
+        )
         self.lkey = lkey.encode('utf8')
 
     async def connect(self) -> bytes:
@@ -252,7 +271,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
-        connect_packet = self.build_conn_paket(tid, BACKEND_DETAILS[self.platform]['clientString'])
+        connect_packet = self.build_conn_paket(tid, self.client_string)
         await self.connection.write(connect_packet)
 
         response = await self.connection.read()
