@@ -42,10 +42,10 @@ class Connection:
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
-            raise TimeoutError(f'Connection attempt to {target} timed out')
+            raise TimeoutError(f'Connection attempt to {target} timed out') from None
         except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
-            raise ConnectionError(f'Failed to connect to {target} ({e})')
+            raise ConnectionError(f'Failed to connect to {target} ({e})') from None
 
     def write(self, packet: Packet) -> None:
         if not self.is_connected:
@@ -57,7 +57,7 @@ class Connection:
         try:
             self.sock.sendall(bytes(packet))
         except (socket.error, ConnectionResetError, RuntimeError) as e:
-            raise ConnectionError(f'Failed to send data to server ({e})')
+            raise ConnectionError(f'Failed to send data to server ({e})') from None
 
         logger.debug(packet)
 
@@ -106,9 +106,9 @@ class Connection:
         try:
             return Buffer(self.sock.recv(buflen))
         except socket.timeout:
-            raise TimeoutError('Timed out while receiving server data')
+            raise TimeoutError('Timed out while receiving server data') from None
         except (socket.error, ConnectionResetError) as e:
-            raise ConnectionError(f'Failed to receive data from server ({e})')
+            raise ConnectionError(f'Failed to receive data from server ({e})') from None
 
     def init_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
