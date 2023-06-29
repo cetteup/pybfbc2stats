@@ -140,12 +140,12 @@ Create a new [Async]FeslClient instance.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`username`     | str  | Required
-`password`     | str  | Required
-`platform`     | Platform | Required | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)
-`timeout`      | float   | Optional  | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend)
+| Argument   | Type     | Opt/Required | Note                                                                                                                                                                                                                |
+|------------|----------|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `username` | str      | Required     |                                                                                                                                                                                                                     |
+| `password` | str      | Required     |                                                                                                                                                                                                                     |
+| `platform` | Platform | Required     | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)                                                                                                                                               |
+| `timeout`  | float    | Optional     | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend) |
 
 ----
 
@@ -187,10 +187,10 @@ Lookup a list of **url encoded/quoted** usernames and return any matching person
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`usernames`     | List[str]  | Required | List of **url encoded/quoted** usernames
-`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
+| Argument    | Type      | Opt/Required | Note                                                         |
+|-------------|-----------|--------------|--------------------------------------------------------------|
+| `usernames` | List[str] | Required     | List of **url encoded/quoted** usernames                     |
+| `namespace` | Namespace | Required     | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360` |
 
 **Example**
 
@@ -215,10 +215,10 @@ Lookup a single **url encoded/quoted** username and return any matching persona 
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`username`     | str  | Required | **Url encoded/quoted** username
-`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
+| Argument    | Type      | Opt/Required | Note                                                         |
+|-------------|-----------|--------------|--------------------------------------------------------------|
+| `username`  | str       | Required     | **Url encoded/quoted** username                              |
+| `namespace` | Namespace | Required     | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360` |
 
 **Example**
 
@@ -241,10 +241,10 @@ Lookup a list of user ids and return any matching personas.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`user_ids`     | List[int]  | Required | 
-`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
+| Argument    | Type      | Opt/Required | Note                                                         |
+|-------------|-----------|--------------|--------------------------------------------------------------|
+| `user_ids`  | List[int] | Required     |                                                              |
+| `namespace` | Namespace | Required     | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360` |
 
 **Example**
 
@@ -265,10 +265,10 @@ Lookup a single user id and return any matching persona.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`user_id`     | int  | Required | 
-`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
+| Argument    | Type      | Opt/Required | Note                                                         |
+|-------------|-----------|--------------|--------------------------------------------------------------|
+| `user_id`   | int       | Required     |                                                              |
+| `namespace` | Namespace | Required     | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360` |
 
 **Example**
 
@@ -289,10 +289,10 @@ Find personas given a **url encoded/quoted** (partial) name. You can use `*` as 
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`screen_name`     | str  | Required | **Url encoded/quoted** (partial) name
-`namespace`     | Namespace | Required | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360`
+| Argument      | Type      | Opt/Required | Note                                                         |
+|---------------|-----------|--------------|--------------------------------------------------------------|
+| `screen_name` | str       | Required     | **Url encoded/quoted** (partial) name                        |
+| `namespace`   | Namespace | Required     | One of: `Namespace.pc`, `Namespace.ps3`, `Namespace.xbox360` |
 
 **Example**
 
@@ -313,10 +313,10 @@ Retrieve a given list of stats attributes for a given player id on the client in
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`userid`       | int  | Required | 
-`keys`         | List[bytes] | Optional | By default, all available attributes are retrieved (see `STATS_KEYS` constant for details)
+| Argument | Type        | Opt/Required | Note                                                                                       |
+|----------|-------------|--------------|--------------------------------------------------------------------------------------------|
+| `userid` | int         | Required     |                                                                                            |
+| `keys`   | List[bytes] | Optional     | By default, all available attributes are retrieved (see `STATS_KEYS` constant for details) |
 
 **Example**
 
@@ -337,12 +337,12 @@ Retrieve a given range of players on the leaderboard with the given list of stat
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`min_rank`       | int  | Optional | Minimum placement/rank on the leaderboard (1-250000)
-`max_rank`       | int  | Optional | Maximum placement/rank on the leaderboard (1-250001)
-`sort_by`      | bytes | Optional  | Key to sort leaderboard by, must be one of `deaths`, `elo`, `kills`, `rank`, `score`, `time`, `veteran`
-`keys`         | List[bytes] | Optional | By default, only `deaths`, `kills`, `score` and `time` are retrieved (see `STATS_KEYS` constant for additional available keys)
+| Argument   | Type        | Opt/Required | Note                                                                                                                           |
+|------------|-------------|--------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `min_rank` | int         | Optional     | Minimum placement/rank on the leaderboard (1-250000)                                                                           |
+| `max_rank` | int         | Optional     | Maximum placement/rank on the leaderboard (1-250001)                                                                           |
+| `sort_by`  | bytes       | Optional     | Key to sort leaderboard by, must be one of `deaths`, `elo`, `kills`, `rank`, `score`, `time`, `veteran`                        |
+| `keys`     | List[bytes] | Optional     | By default, only `deaths`, `kills`, `score` and `time` are retrieved (see `STATS_KEYS` constant for additional available keys) |
 
 **Example**
 
@@ -363,9 +363,9 @@ Retrieve a list of players the given player id has taken dogtags from.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required
----------------|------|--------------
-`userid`       | int  | Required
+| Argument | Type | Opt/Required |
+|----------|------|--------------|
+| `userid` | int  | Required     |
 
 **Example**
 
@@ -384,13 +384,13 @@ Create a new [Async]TheaterClient instance.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-`host`         | str  | Required     | IP/hostname of the theater backend for the platform (can be retrieved via FESL)
-`port`         | int  | Required     | Port of the theater backend for the platform (can be retrieved via FESL)
-`lkey`         | str  | Required     | Login key (lkey) (retrieved via FESL)
-`platform`     | Platform | Required | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)
-`timeout`      | float   | Optional  | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend)
+| Argument   | Type     | Opt/Required | Note                                                                                                                                                                                                                |
+|------------|----------|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `host`     | str      | Required     | IP/hostname of the theater backend for the platform (can be retrieved via FESL)                                                                                                                                     |
+| `port`     | int      | Required     | Port of the theater backend for the platform (can be retrieved via FESL)                                                                                                                                            |
+| `lkey`     | str      | Required     | Login key (lkey) (retrieved via FESL)                                                                                                                                                                               |
+| `platform` | Platform | Required     | One of: `Platform.pc`, `Platform.ps3` (Xbox 360 is not yet supported)                                                                                                                                               |
+| `timeout`  | float    | Optional     | How long to wait for data before raising a timeout exception (timeout is applied **per socket operation**, meaning the timeout is applied to each read from/write to the underlying connection to the FESL backend) |
 
 ----
 
@@ -427,9 +427,9 @@ Retrieve all available game servers from the given lobby.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-lobby_id       | int  | Required     | Id of the game server lobby
+| Argument | Type | Opt/Required | Note                        |
+|----------|------|--------------|-----------------------------|
+| lobby_id | int  | Required     | Id of the game server lobby |
 
 **Example**
 
@@ -448,10 +448,10 @@ Retrieve full details and player list for a given server.
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-lobby_id       | int  | Required     | Id of the game server lobby the server is hosted in
-game_id        | int  | Required     | Game (server) id
+| Argument | Type | Opt/Required | Note                                                |
+|----------|------|--------------|-----------------------------------------------------|
+| lobby_id | int  | Required     | Id of the game server lobby the server is hosted in |
+| game_id  | int  | Required     | Game (server) id                                    |
 
 **Example**
 
@@ -471,9 +471,9 @@ raises a PlayerNotFound exception if the player is not currently playing online)
 
 **Arguments**
 
-  Argument     | Type | Opt/Required | Note
----------------|------|--------------|-----
-user_id       | int  | Required     | Id of the user whose current server to get
+| Argument | Type | Opt/Required | Note                                       |
+|----------|------|--------------|--------------------------------------------|
+| user_id  | int  | Required     | Id of the user whose current server to get |
 
 **Example**
 
