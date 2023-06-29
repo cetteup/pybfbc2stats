@@ -69,7 +69,8 @@ BACKEND_DETAILS = {
         'clientString': b'bfbc2-pc'
     },
     Platform.xbox360: {
-        'host': '159.153.64.190', # bfbc2-xbox-server.fesl.ea.com
+        # Xbox 360 FESL (and Theater) resolve to private IP addresses, see DNS_OVERRIDES below for their public IPs
+        'host': 'bfbc2-360-server.fesl.ea.com',
         'port': 18341,
         'clientString': b'bfbc2-360'
     },
@@ -78,6 +79,16 @@ BACKEND_DETAILS = {
         'port': 18331,
         'clientString': b'bfbc2-ps3'
     }
+}
+# Added inactive PC and PS3 overrides for potential future use
+DNS_OVERRIDES = {
+    # 'bfbc2-pc-server.fesl.ea.com': '159.153.64.138',
+    # 'bfbc2-pc-server.theater.ea.com': '159.153.64.163',
+    'bfbc2-360-server.fesl.ea.com': '159.153.64.190',
+    'bfbc2-360-server.theater.ea.com': '159.153.64.191',
+    # 'bfbc2-ps3-server.fesl.ea.com': '159.153.64.125',
+    # 'bfbc2-ps3-server.theater.ea.com': '159.153.64.150',
+
 }
 DEFAULT_LEADERBOARD_KEYS = [b'deaths', b'kills', b'score', b'time']
 STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br40mmsg_01', b'br9a91_00', b'br9a91_01',

@@ -22,19 +22,25 @@ class AsyncConnection(Connection):
         if self.is_connected:
             return
 
+        # Manually resolve hostname to a) be able to log hostname and address and b) handle Xbox 360 DNS override
+        address = self.resolve_host(self.host)
+
+        target = self.format_target(self.host, address, self.port)
+        logger.debug(f'Connecting to {target}')
+
         # Init socket
         self.sock = self.init_socket()
 
         try:
-            self.sock.connect((self.host, self.port))
+            self.sock.connect((address, self.port))
             self.reader, self.writer = await self.open_connection()
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
-            raise TimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
+            raise TimeoutError(f'Connection attempt to {target} timed out')
         except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
-            raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
+            raise ConnectionError(f'Failed to connect to {target} ({e})')
 
     async def write(self, packet: Packet) -> None:
         if not self.is_connected:

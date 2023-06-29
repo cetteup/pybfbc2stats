@@ -623,12 +623,7 @@ class TheaterClient(Client):
 
     def __init__(self, host: str, port: int, lkey: str, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = Connection(
-            # Override host for Xbox 360, since the hostname resolves to a private IP address
-            '159.153.64.191' if host == 'bfbc2-360-server.theater.ea.com' else host,
-            port,
-            TheaterPacket
-        )
+        connection = Connection(host, port, TheaterPacket)
         super().__init__(connection, platform, timeout, track_steps)
         self.lkey = lkey.encode('utf8')
 

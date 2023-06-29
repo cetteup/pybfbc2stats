@@ -4,6 +4,7 @@ import time
 from typing import Type
 
 from .buffer import Buffer
+from .constants import DNS_OVERRIDES
 from .exceptions import TimeoutError, ConnectionError
 from .logger import logger
 from .packet import Packet
@@ -27,18 +28,24 @@ class Connection:
         if self.is_connected:
             return
 
+        # Manually resolve hostname to a) be able to log hostname and address and b) handle Xbox 360 DNS override
+        address = self.resolve_host(self.host)
+
+        target = self.format_target(self.host, address, self.port)
+        logger.debug(f'Connecting to {target}')
+
         # Init socket
         self.sock = self.init_socket()
 
         try:
-            self.sock.connect((self.host, self.port))
+            self.sock.connect((address, self.port))
             self.is_connected = True
         except socket.timeout:
             self.is_connected = False
-            raise TimeoutError(f'Connection attempt to {self.host}:{self.port} timed out')
+            raise TimeoutError(f'Connection attempt to {target} timed out')
         except (socket.error, ConnectionResetError) as e:
             self.is_connected = False
-            raise ConnectionError(f'Failed to connect to {self.host}:{self.port} ({e})')
+            raise ConnectionError(f'Failed to connect to {target} ({e})')
 
     def write(self, packet: Packet) -> None:
         if not self.is_connected:
@@ -109,6 +116,31 @@ class Connection:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
         return sock
+
+    @staticmethod
+    def resolve_host(host: str) -> str:
+        # Handle DNS overrides (required for Xbox 360 FESL and Theater, for which hostnames resolve to private IPs)
+        if (address := DNS_OVERRIDES.get(host)) is not None:
+            logger.debug(f'Overriding hostname resolution for {host} to resolve to {address}')
+            return address
+
+        try:
+            address = socket.gethostbyname(host)
+        except socket.gaierror:
+            raise ConnectionError(f'Unable to resolve hostname ({host})') from None
+
+        # IP addresses will resolve "to themselves", no need to log that
+        if host != address:
+            logger.debug(f'Hostname {host} resolved to {address}')
+
+        return address
+
+    @staticmethod
+    def format_target(host: str, address: str, port: int) -> str:
+        if host != address:
+            return f'{host} ({address}) : {port}'
+        else:
+            return f'{host} : {port}'
 
     def __del__(self):
         self.close()
