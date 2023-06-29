@@ -322,7 +322,10 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         if is_error:
             raise error
         glst = self.parse_simple_response(glst_response)
-        num_games = int(glst['LOBBY-NUM-GAMES'])
+
+        # GLST contains LOBBY-NUM-GAMES and NUM-GAMES. In rare cases we get NUM-GAMES < LOBBY-NUM-GAMES,
+        # with Theater only returning NUM-GAMES servers. Just using NUM-GAMES here should be safe
+        num_games = int(glst['NUM-GAMES'])
 
         # Retrieve GDAT for all servers
         servers = []
