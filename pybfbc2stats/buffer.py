@@ -72,6 +72,10 @@ class Buffer:
         self.reversed = not self.reversed
         self.index = self.length - self.index if self.reversed else self.index
 
+    def read_uchar(self) -> int:
+        v, *_ = struct.unpack(self.byte_order + 'B', self.read(1))
+        return v
+
     def read_ushort(self) -> int:
         v, *_ = struct.unpack(self.byte_order + 'H', self.read(2))
         return v
