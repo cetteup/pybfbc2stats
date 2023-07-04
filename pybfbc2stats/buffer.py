@@ -4,6 +4,7 @@ from typing import Union
 
 from .exceptions import Error
 
+
 class ByteOrder(str, Enum):
     LittleEndian = '<'
     BigEndian = '>'

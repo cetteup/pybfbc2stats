@@ -277,7 +277,6 @@ class FeslClient(Client):
         parsed_response, *_ = self.parse_map_response(raw_response, b'values.')
         return self.format_dogtags_response(parsed_response, self.platform)
 
-
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         is_auto_respond_packet, handler = False, None
 
@@ -507,7 +506,6 @@ class FeslClient(Client):
 
         return dataset, meta_lines
 
-
     @staticmethod
     def pre_parse_complex_response(
             raw_response: bytes,
@@ -596,7 +594,8 @@ class FeslClient(Client):
             Value format seems a bit odd here (who knows, maybe it was obvious do whoever built it at DICE)
             Note: Different platforms (seem to) use different byte orders (ps3: big, pc: little)
             - player name, usually followed by a bunch of null bytes to padd the record length to 28 bytes
-            - 4 bytes, meaning unknown (could be an int [timestamp?], since order seems to be flipped on PC vs. PS3 => byte order)
+            - 4 bytes, meaning unknown (could be an int [timestamp?],
+              since order seems to be flipped on PC vs. PS3 => byte order)
             - 2 bytes, number of bronze dogtags taken from player
             - 2 bytes, number of silver dogtags taken from player
             - 2 bytes, number of gold dogtags taken from player
@@ -763,7 +762,7 @@ class TheaterClient(Client):
         """
         return self.get_gdat(uid=str(user_id).encode('utf8'))
 
-    def get_gdat(self, **kwargs: bytes)  -> Tuple[dict, dict, List[dict]]:
+    def get_gdat(self, **kwargs: bytes) -> Tuple[dict, dict, List[dict]]:
         """
         Get GDAT for an individual server
         :param kwargs: Id(s) to identify the game (server):
