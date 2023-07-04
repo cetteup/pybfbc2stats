@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Union
 
 
 class Step(int, Enum):
@@ -20,6 +21,14 @@ class Namespace(bytes, Enum):
     xbox360 = b'xbox'
     ps3 = b'ps3'
     cem_ea_id = b'cem_ea_id'
+    XBL_SUB = b'XBL_SUB'
+    PS3_SUB = b'PS3_SUB'
+
+    @staticmethod
+    def is_legacy_namespace(namespace: Union['Namespace', bytes]) -> bool:
+        if namespace in [Namespace.XBL_SUB, Namespace.PS3_SUB]:
+            return True
+        return False
 
 
 class LookupType(bytes, Enum):

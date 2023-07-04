@@ -369,11 +369,29 @@ class FeslClient(Client):
         )
 
     @staticmethod
-    def build_user_lookup_packet(tid: int, user_identifiers: List[str],
-                                 namespace: Union[Namespace, bytes], lookup_type: Union[LookupType, bytes]) -> FeslPacket:
-        user_dicts = [{bytes(lookup_type): identifier.encode('utf8'), b'namespace': bytes(namespace)}
-                      for identifier in user_identifiers]
+    def build_user_lookup_packet(
+            tid: int,
+            user_identifiers: List[str],
+            namespace: Union[Namespace, bytes],
+            lookup_type: Union[LookupType, bytes]
+    ) -> FeslPacket:
+        user_dicts = [
+            {
+                bytes(lookup_type): identifier.encode('utf8'),
+                b'namespace': bytes(namespace)
+            } for identifier in user_identifiers
+        ]
         lookup_list = FeslClient.build_list_body(user_dicts, b'userInfo')
+
+        # Use LookupUserInfo instead of NuLookupUserInfo for legacy namespaces
+        if Namespace.is_legacy_namespace(namespace):
+            return FeslPacket.build(
+                b'acct',
+                b'TXN=LookupUserInfo\n' + lookup_list,
+                FeslTransmissionType.SinglePacketRequest,
+                tid
+            )
+
         return FeslPacket.build(
             b'acct',
             b'TXN=NuLookupUserInfo\n' + lookup_list,
@@ -383,10 +401,20 @@ class FeslClient(Client):
 
     @staticmethod
     def build_search_packet(tid: int, screen_name: str, namespace: Union[Namespace, bytes]) -> FeslPacket:
+        # Use SearchOwners instead of NuSearchOwners for legacy namespaces
+        if Namespace.is_legacy_namespace(namespace):
+            FeslPacket.build(
+                b'acct',
+                b'TXN=SearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=1\n'
+                                                                                b'nameSpaceId=' + bytes(namespace),
+                FeslTransmissionType.SinglePacketRequest,
+                tid
+            )
+
         return FeslPacket.build(
             b'acct',
             b'TXN=NuSearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=0\n'
-            b'nameSpaceId=' + bytes(namespace),
+                                                                              b'nameSpaceId=' + bytes(namespace),
             FeslTransmissionType.SinglePacketRequest,
             tid
         )
