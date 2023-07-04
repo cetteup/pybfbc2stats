@@ -5,7 +5,7 @@ from .connection import Connection, SecureConnection
 from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import Error, TimeoutError, ParameterError, \
     PlayerNotFoundError, AuthError, ConnectionError, SearchError, \
-    NotFoundError, ServerNotFoundError, LobbyNotFoundError
+    NotFoundError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError
 
 """
 pybfbc2stats.
@@ -19,5 +19,5 @@ __all__ = ['Connection', 'SecureConnection', 'FeslClient', 'TheaterClient',
            'AsyncConnection', 'AsyncSecureConnection', 'AsyncFeslClient', 'AsyncTheaterClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS',
            'Error', 'ConnectionError', 'ParameterError', 'TimeoutError',
-           'AuthError', 'NotFoundError', 'PlayerNotFoundError',
+           'AuthError', 'NotFoundError', 'PlayerNotFoundError', 'RecordNotFoundError',
            'ServerNotFoundError', 'LobbyNotFoundError', 'SearchError']
