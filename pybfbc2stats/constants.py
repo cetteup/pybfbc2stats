@@ -144,7 +144,7 @@ STATS_KEYS = [b'accuracy', b'br40mmgl_00', b'br40mmgl_01', b'br40mmsg_00', b'br4
               b'c__pkm_hsh_g', b'c__pp2_hsh_g', b'c__ppshv_hsh_g', b'c__prtg_hsh_g', b'c__qbu88_hsh_g',
               b'c__qju88_hsh_g', b'c__quad_ki_g', b'c__re_ko_g', b'c__rept_hsh_g', b'c__rowb_ki_g', b'c__rpkv_hsh_g',
               b'c__s12k_hsh_g', b'c__scar_hsh_g', b'c__smol_hsh_g', b'c__spas12_hsh_g', b'c__stgl_hsh_g',
-              b'c__stmg_hsh_g', b'c__su_ko_g', b'c__sv98_hsh_g', b'c__svdv_hsh_g', b'c__svu_hsh_g', b'c__t54v_ki_g',
+              b'c__stmg_hsh_g', b'c__su_ko_g', b'c__sv98_hsh_g', b'c__svdv_hsh_g', b'c__svu_hsh_g', b'c__t194_hsh_g', b'c__t54v_ki_g',
               b'c__t90_ki_g', b'c__tanc_hsh_g', b'c__tanm_hsh_g', b'c__tru_ki_g', b'c__tt33v_hsh_g', b'c__u12_hsh_g',
               b'c__uav_ki_g', b'c__ump_hsh_g', b'c__umpk_hsh_g', b'c__uzi_hsh_g', b'c__uziv_hsh_g', b'c__vodn_ki_g', b'c__vss_hsh_g',
               b'c__xm22v_hsh_g', b'c__xm8_hsh_g', b'c__xm8c_hsh_g', b'c__xm8lmg_hsh_g', b'c_aav__ddw_g', b'c_aav__si_g',
