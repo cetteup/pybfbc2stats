@@ -1,11 +1,13 @@
 from base64 import b64encode, b64decode
+from datetime import timedelta
 from typing import List, Union, Dict, Tuple, Optional, Callable
 from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
-    DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType
+    DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
+    EPOCH_START
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError
 from .packet import Packet, FeslPacket, TheaterPacket
@@ -621,7 +623,8 @@ class FeslClient(Client):
             """
             Value format seems a bit odd here (who knows, maybe it was obvious do whoever built it at DICE)
             Note: Different platforms (seem to) use different byte orders (ps3: big, pc: little)
-            - player name, usually followed by a bunch of null bytes to padd the record length to 28 bytes
+            Total record length is 28 bytes (BC2)/24 bytes (BC), structured as:
+            - 16 bytes, player name, padded to length using null bytes if required
             - 4 bytes, meaning unknown (could be an int [timestamp?],
               since order seems to be flipped on PC vs. PS3 => byte order)
             - 2 bytes, number of bronze dogtags taken from player
@@ -629,17 +632,14 @@ class FeslClient(Client):
             - 2 bytes, number of gold dogtags taken from player
             - 1 byte, player rank (at time of [last?] dogtag taken)
             - 1 byte, meaning unknown (seems to always be \x00, so it may just be an end marker)
-            Since there seems to no delimiter or anything for the name, we cannot determine it's length
-            => just read from in reverse and take remainder as name (stripping the null bytes)
             """
             byte_order = ByteOrder.LittleEndian if platform is Platform.pc else ByteOrder.BigEndian
             buffer = Buffer(value, byte_order)
-            buffer.reverse()
-            buffer.skip(1)
+            raw_name = buffer.read(16)
+            timestamp = EPOCH_START + timedelta(days=buffer.read_float())
+            dogtags = FeslClient.extract_dogtags(buffer)
             rank = buffer.read_uchar()
-            bronze, silver, gold = buffer.read_ushort(), buffer.read_ushort(), buffer.read_ushort()
-            buffer.skip(4)
-            raw_name = buffer.remaining()
+
             results.append({
                 'userId': key,
                 # FESL returns mangled, incorrect names in extremely rare cases
@@ -647,14 +647,45 @@ class FeslClient(Client):
                 # whose actual name is 'DarkDvil07' as per a direct lookup
                 # => ignore any decoding errors
                 'userName': raw_name.strip(b'\x00').decode('utf8', 'ignore'),
+                'timestamp': timestamp.timestamp(),
                 'rank': rank,
-                'bronze': bronze,
-                'silver': silver,
-                'gold': gold
+                **dogtags
             })
 
         return results
 
+    @staticmethod
+    def extract_dogtags(buffer: Buffer) -> dict:
+        length = len(buffer.remaining())
+        if length == 4:
+            """
+            Bad Company only tracks the total and seemingly determines bronze/silver/gold based on rank value
+            So, we only get:
+            - 2 bytes, number of dogtags taken from player
+            """
+            #
+            total = buffer.read_ushort()
+            return {
+                'dogtags': total
+            }
+
+        if length == 8:
+            """
+            Bad Company 2 returns individual values for the different dogtag tiers:
+            - 2 bytes, number of bronze dogtags taken from player
+            - 2 bytes, number of silver dogtags taken from player
+            - 2 bytes, number of gold dogtags taken from player
+            """
+            gold, silver, bronze = buffer.read_ushort(), buffer.read_ushort(), buffer.read_ushort()
+            total = bronze + silver + gold
+            return {
+                'bronze': bronze,
+                'silver': silver,
+                'gold': gold,
+                'dogtags': total
+            }
+
+        raise Error('Trying to extract dogtag from record with invalid remaining length')
 
 class TheaterClient(Client):
     lkey: bytes
