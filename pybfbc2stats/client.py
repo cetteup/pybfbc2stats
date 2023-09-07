@@ -646,7 +646,7 @@ class FeslClient(Client):
                 # e.g. b'\xac\x1d5\x08Dvil07\x00\x00\x00\x00\x00\x00' for pid battlefield/272333965,
                 # whose actual name is 'DarkDvil07' as per a direct lookup
                 # => ignore any decoding errors
-                'userName': raw_name.strip(b'\x00').decode('utf8', 'ignore'),
+                'userName': raw_name.strip(b'\x00').decode('utf8', 'replace'),
                 'timestamp': timestamp.timestamp(),
                 'rank': rank,
                 **dogtags
