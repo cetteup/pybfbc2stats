@@ -647,7 +647,8 @@ class FeslClient(Client):
                 'userName': raw_name.strip(b'\x00').decode('utf8', 'replace'),
                 'timestamp': timestamp.timestamp(),
                 'rank': rank,
-                **dogtags
+                **dogtags,
+                'raw': value
             })
 
         return results
