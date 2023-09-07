@@ -627,9 +627,7 @@ class FeslClient(Client):
             - 16 bytes, player name, padded to length using null bytes if required
             - 4 bytes, meaning unknown (could be an int [timestamp?],
               since order seems to be flipped on PC vs. PS3 => byte order)
-            - 2 bytes, number of bronze dogtags taken from player
-            - 2 bytes, number of silver dogtags taken from player
-            - 2 bytes, number of gold dogtags taken from player
+            - 6 bytes (BC2) or 2 bytes (BC), number of dogtags taken from player
             - 1 byte, player rank (at time of [last?] dogtag taken)
             - 1 byte, meaning unknown (seems to always be \x00, so it may just be an end marker)
             """
