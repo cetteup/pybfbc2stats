@@ -80,3 +80,7 @@ class Buffer:
     def read_ushort(self) -> int:
         v, *_ = struct.unpack(self.byte_order + 'H', self.read(2))
         return v
+
+    def read_float(self) -> float:
+        v, *_ = struct.unpack(self.byte_order + 'f', self.read(4))
+        return v
