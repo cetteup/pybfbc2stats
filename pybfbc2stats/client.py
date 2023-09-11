@@ -198,14 +198,13 @@ class FeslClient(Client):
     def lookup_username(self, username: str, namespace: Namespace) -> dict:
         return self.lookup_user_identifier(username, namespace, LookupType.byName)
 
-    def lookup_user_ids(self, user_ids: List[int], namespace: Namespace) -> List[dict]:
-        user_ids_str = [str(user_id) for user_id in user_ids]
-        return self.lookup_user_identifiers(user_ids_str, namespace, LookupType.byId)
+    def lookup_user_ids(self, user_ids: List[Union[int, str]], namespace: Namespace) -> List[dict]:
+        return self.lookup_user_identifiers(user_ids, namespace, LookupType.byId)
 
-    def lookup_user_id(self, user_id: int, namespace: Namespace) -> dict:
-        return self.lookup_user_identifier(str(user_id), namespace, LookupType.byId)
+    def lookup_user_id(self, user_id: Union[int, str], namespace: Namespace) -> dict:
+        return self.lookup_user_identifier(user_id, namespace, LookupType.byId)
 
-    def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
+    def lookup_user_identifiers(self, identifiers: List[Union[str, int]], namespace: Namespace,
                                 lookup_type: LookupType) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
@@ -218,7 +217,7 @@ class FeslClient(Client):
         parsed_response, _ = self.parse_list_response(raw_response, b'userInfo.')
         return parsed_response
 
-    def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
+    def lookup_user_identifier(self, identifier: Union[str, int], namespace: Namespace, lookup_type: LookupType) -> dict:
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
@@ -238,7 +237,7 @@ class FeslClient(Client):
         parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
-    def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
+    def get_stats(self, userid: Union[int, str], keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
@@ -267,7 +266,7 @@ class FeslClient(Client):
         return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    def get_dogtags(self, userid: int) -> List[dict]:
+    def get_dogtags(self, userid: Union[int, str]) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
@@ -373,13 +372,13 @@ class FeslClient(Client):
     @staticmethod
     def build_user_lookup_packet(
             tid: int,
-            user_identifiers: List[str],
+            user_identifiers: List[Union[str, int]],
             namespace: Union[Namespace, bytes],
             lookup_type: Union[LookupType, bytes]
     ) -> FeslPacket:
         user_dicts = [
             {
-                bytes(lookup_type): identifier.encode('utf8'),
+                bytes(lookup_type): str(identifier).encode('utf8'),
                 b'namespace': bytes(namespace)
             } for identifier in user_identifiers
         ]
@@ -434,7 +433,7 @@ class FeslClient(Client):
         )
 
     @staticmethod
-    def build_stats_query_packets(tid: int, userid: int, keys: List[bytes]) -> List[FeslPacket]:
+    def build_stats_query_packets(tid: int, userid: Union[int, str], keys: List[bytes]) -> List[FeslPacket]:
         userid_bytes = str(userid).encode('utf8')
         key_list = FeslClient.build_list_body(keys, b'keys')
         stats_query = b'TXN=GetStats\nowner=' + userid_bytes + b'\nownerType=1\nperiodId=0\nperiodPast=0\n' + key_list
@@ -462,7 +461,7 @@ class FeslClient(Client):
         return chunk_packets
 
     @staticmethod
-    def build_dogtag_query_packet(tid: int, userid: int) -> FeslPacket:
+    def build_dogtag_query_packet(tid: int, userid: Union[int, str]) -> FeslPacket:
         return FeslPacket.build(
             b'recp',
             # Could also use GetRecord to receive a list
@@ -767,7 +766,7 @@ class TheaterClient(Client):
 
         return lobbies
 
-    def get_servers(self, lobby_id: int) -> List[dict]:
+    def get_servers(self, lobby_id: Union[int, str]) -> List[dict]:
         """
         Retrieve all available game servers from the given lobby
         :param lobby_id: Id of the game server lobby
@@ -802,7 +801,7 @@ class TheaterClient(Client):
 
         return servers
 
-    def get_server_details(self, lobby_id: int, game_id: int) -> Tuple[dict, dict, List[dict]]:
+    def get_server_details(self, lobby_id: Union[int, str], game_id: Union[int, str]) -> Tuple[dict, dict, List[dict]]:
         """
         Retrieve full details and player list for a given server
         :param lobby_id: Id of the game server lobby the server is hosted in
@@ -811,7 +810,7 @@ class TheaterClient(Client):
         """
         return self.get_gdat(lid=str(lobby_id).encode('utf8'), gid=str(game_id).encode('utf8'))
 
-    def get_current_server(self, user_id: int) -> Tuple[dict, dict, List[dict]]:
+    def get_current_server(self, user_id: Union[int, str]) -> Tuple[dict, dict, List[dict]]:
         """
         Retrieve full details and player list for a given user's current server (server they are currently playing on,
         raises a PlayerNotFound exception if the player is not currently playing online)

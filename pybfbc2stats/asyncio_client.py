@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
@@ -160,14 +160,13 @@ class AsyncFeslClient(FeslClient, AsyncClient):
     async def lookup_username(self, username: str, namespace: Namespace) -> dict:
         return await self.lookup_user_identifier(username, namespace, LookupType.byName)
 
-    async def lookup_user_ids(self, user_ids: List[int], namespace: Namespace) -> List[dict]:
-        user_ids_str = [str(user_id) for user_id in user_ids]
-        return await self.lookup_user_identifiers(user_ids_str, namespace, LookupType.byId)
+    async def lookup_user_ids(self, user_ids: List[Union[int, str]], namespace: Namespace) -> List[dict]:
+        return await self.lookup_user_identifiers(user_ids, namespace, LookupType.byId)
 
-    async def lookup_user_id(self, user_id: int, namespace: Namespace) -> dict:
-        return await self.lookup_user_identifier(str(user_id), namespace, LookupType.byId)
+    async def lookup_user_id(self, user_id: Union[int, str], namespace: Namespace) -> dict:
+        return await self.lookup_user_identifier(user_id, namespace, LookupType.byId)
 
-    async def lookup_user_identifiers(self, identifiers: List[str], namespace: Namespace,
+    async def lookup_user_identifiers(self, identifiers: List[Union[str, int]], namespace: Namespace,
                                       lookup_type: LookupType) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
@@ -180,7 +179,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         parsed_response, *_ = self.parse_list_response(raw_response, b'userInfo.')
         return parsed_response
 
-    async def lookup_user_identifier(self, identifier: str, namespace: Namespace, lookup_type: LookupType) -> dict:
+    async def lookup_user_identifier(self, identifier: Union[str, int], namespace: Namespace, lookup_type: LookupType) -> dict:
         results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
 
         if len(results) == 0:
@@ -200,7 +199,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
         return self.format_search_response(parsed_response, metadata)
 
-    async def get_stats(self, userid: int, keys: List[bytes] = STATS_KEYS) -> dict:
+    async def get_stats(self, userid: Union[int, str], keys: List[bytes] = STATS_KEYS) -> dict:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
@@ -229,7 +228,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
                  for (key, value) in persona.items()} for persona in parsed_response]
 
-    async def get_dogtags(self, userid: int) -> List[dict]:
+    async def get_dogtags(self, userid: Union[int, str]) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
@@ -325,7 +324,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
 
         return lobbies
 
-    async def get_servers(self, lobby_id: int) -> List[dict]:
+    async def get_servers(self, lobby_id: Union[int, str]) -> List[dict]:
         if self.track_steps and TheaterStep.user not in self.completed_steps:
             await self.authenticate()
 
@@ -355,10 +354,10 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
 
         return servers
 
-    async def get_server_details(self, lobby_id: int, game_id: int) -> Tuple[dict, dict, List[dict]]:
+    async def get_server_details(self, lobby_id: Union[int, str], game_id: Union[int, str]) -> Tuple[dict, dict, List[dict]]:
         return await self.get_gdat(lid=str(lobby_id).encode('utf8'), gid=str(game_id).encode('utf8'))
 
-    async def get_current_server(self, user_id: int) -> Tuple[dict, dict, List[dict]]:
+    async def get_current_server(self, user_id: Union[int, str]) -> Tuple[dict, dict, List[dict]]:
         return await self.get_gdat(uid=str(user_id).encode('utf8'))
 
     async def get_gdat(self, **kwargs: bytes) -> Tuple[dict, dict, List[dict]]:
