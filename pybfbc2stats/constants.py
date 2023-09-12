@@ -116,15 +116,15 @@ GENERAL_STATS_KEYS = [
     b'ul_c4timed', b'ul_defi', b'ul_f2000', b'ul_g3', b'ul_gol', b'ul_ld', b'ul_m1', b'ul_m136', b'ul_m16', b'ul_m16k',
     b'ul_m1911', b'ul_m1a1', b'ul_m249', b'ul_m2cg', b'ul_m416', b'ul_m60', b'ul_m93r', b'ul_m95', b'ul_m95k',
     b'ul_mcs', b'ul_medk', b'ul_mg3', b'ul_mg36', b'ul_mg3k', b'ul_mk14ebr', b'ul_mots', b'ul_mp412', b'ul_mp443',
-    b'ul_mst', b'ul_n2k', b'ul_pp2', b'ul_qbu88', b'ul_qju88', b'ul_rept', b'ul_s12k', b'ul_scar', b'ul_sp_alt_a',
-    b'ul_sp_alt_r', b'ul_sp_alt_s', b'ul_sp_ammsupp', b'ul_sp_assault_a', b'ul_sp_assault_r', b'ul_sp_assault_s',
-    b'ul_sp_bodarm', b'ul_sp_buldmplus', b'ul_sp_coaxmg', b'ul_sp_expdmplus', b'ul_sp_expsupp', b'ul_sp_grsupp',
-    b'ul_sp_harveharm', b'ul_sp_lmg_aim', b'ul_sp_lmg_r', b'ul_sp_lmg_s', b'ul_sp_medheal', b'ul_sp_medradius',
-    b'ul_sp_sczmplus', b'ul_sp_shotgun_c', b'ul_sp_shotgun_f', b'ul_sp_shotgun_s', b'ul_sp_smg_a', b'ul_sp_smg_r',
-    b'ul_sp_smg_s', b'ul_sp_sniper_r', b'ul_sp_sniper_s', b'ul_sp_sprint', b'ul_sp_spscope', b'ul_sp_tnsmk',
-    b'ul_sp_tnzm', b'ul_sp_vdamage', b'ul_sp_vehmosens', b'ul_sp_vreload', b'ul_spas12', b'ul_spas15', b'ul_sv98',
-    b'ul_svu', b'ul_t194', b'ul_trad', b'ul_u12', b'ul_ump', b'ul_umpk', b'ul_uzi', b'ul_vss', b'ul_xm8', b'ul_xm8c',
-    b'ul_xm8lmg', b'veteran', b'webstats', b'webvet', b'wins'
+    b'ul_mst', b'ul_n2k', b'ul_pp2', b'ul_qbu88', b'ul_qby88', b'ul_qju88', b'ul_rept', b'ul_s12k', b'ul_scar',
+    b'ul_sp_alt_a', b'ul_sp_alt_r', b'ul_sp_alt_s', b'ul_sp_ammsupp', b'ul_sp_assault_a', b'ul_sp_assault_r',
+    b'ul_sp_assault_s', b'ul_sp_bodarm', b'ul_sp_buldmplus', b'ul_sp_coaxmg', b'ul_sp_expdmplus', b'ul_sp_expsupp',
+    b'ul_sp_grsupp', b'ul_sp_harveharm', b'ul_sp_lmg_aim', b'ul_sp_lmg_r', b'ul_sp_lmg_s', b'ul_sp_medheal',
+    b'ul_sp_medradius', b'ul_sp_sczmplus', b'ul_sp_shotgun_c', b'ul_sp_shotgun_f', b'ul_sp_shotgun_s', b'ul_sp_smg_a',
+    b'ul_sp_smg_r', b'ul_sp_smg_s', b'ul_sp_sniper_r', b'ul_sp_sniper_s', b'ul_sp_sprint', b'ul_sp_spscope',
+    b'ul_sp_tnsmk', b'ul_sp_tnzm', b'ul_sp_vdamage', b'ul_sp_vehmosens', b'ul_sp_vreload', b'ul_spas12', b'ul_spas15',
+    b'ul_sv98', b'ul_svu', b'ul_t194', b'ul_trad', b'ul_u12', b'ul_ump', b'ul_umpk', b'ul_uzi', b'ul_vss', b'ul_xm8',
+    b'ul_xm8c', b'ul_xm8lmg', b'veteran', b'webstats', b'webvet', b'wins'
 ]
 WEAPON_STATS_KEYS = [
     b'c_40mmgl__kw_g', b'c_40mmgl__sfw_g', b'c_40mmgl__shw_g', b'c_40mmgl__sw_g', b'c_40mmsg__kw_g', b'c_40mmsg__sfw_g',
