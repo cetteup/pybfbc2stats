@@ -581,7 +581,13 @@ class FeslClient(Client):
                 raise PlayerNotFoundError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
+                # (the error message just says: "The data necessary for this transaction was not found")
                 raise SearchError('FESL found no or too many results matching the search query')
+            elif error_code == b'223' and method == b'SearchOwners':
+                # In contrast to NuSearchOwners, SearchOwners actually returns an empty list if no results are found,
+                # so the error code is only related to finding too many results
+                # (also indicated by the error message: "Too many results found, please refine the search criteria")
+                raise SearchError('FESL found too many results matching the search query')
             elif error_code == b'5000' and method.startswith(b'GetRecord'):
                 raise RecordNotFoundError('FESL returned record not found error')
             else:
