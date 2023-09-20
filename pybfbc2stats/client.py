@@ -404,7 +404,7 @@ class FeslClient(Client):
     def build_search_packet(tid: int, screen_name: str, namespace: Union[Namespace, bytes]) -> FeslPacket:
         # Use SearchOwners instead of NuSearchOwners for legacy namespaces
         if Namespace.is_legacy_namespace(namespace):
-            FeslPacket.build(
+            return FeslPacket.build(
                 b'acct',
                 b'TXN=SearchOwners\nscreenName=' + screen_name.encode('utf8') + b'\nsearchType=1\nretrieveUserIds=1\n'
                                                                                 b'nameSpaceId=' + bytes(namespace),
