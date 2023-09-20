@@ -573,6 +573,8 @@ class FeslClient(Client):
             method = method_line.split(b'=').pop()
             error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
             error_code = error_code_line.split(b'=').pop()
+            error_message_line = next((line for line in lines if line.startswith(b'localizedMessage=')))
+            error_message = error_message_line.split(b'=').pop().strip(b'"')
             if error_code == b'21':
                 raise ParameterError('FESL returned invalid parameter error')
             elif error_code == b'101' and method == b'NuLookupUserInfo':
@@ -583,7 +585,7 @@ class FeslClient(Client):
             elif error_code == b'5000' and method.startswith(b'GetRecord'):
                 raise RecordNotFoundError('FESL returned record not found error')
             else:
-                raise Error(f'FESL returned an error (code {error_code.decode("utf")})')
+                raise Error(f'FESL returned an error: {error_message.decode("utf8")} (code {error_code.decode("utf8")})')
         elif transmission_type is not FeslTransmissionType.SinglePacketResponse and \
                 transmission_type is not FeslTransmissionType.MultiPacketResponse:
             # Packet is neither one data packet of a multi-packet response nor a single-packet response
