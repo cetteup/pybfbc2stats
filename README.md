@@ -9,12 +9,13 @@ Python 🐍 library for retrieving statistics of Battlefield: Bad Company 2 play
 
 ## Features
 
-- lookup players/personas by id or name on any platform
-- search for players/personas by name on any platform (with wildcard support)
-- retrieve all available statistics for players on PC/Xbox 360/PS3
-- retrieve player leaderboards on PC/Xbox 360/PS3
-- retrieve server list for PC/Xbox 360/PS3
-- retrieve individual game server's details for PC/Xbox 360/PS3 (including player list)
+- lookup players/personas by id or name
+- search for players/personas by name (with wildcard support)
+- retrieve all available player statistics
+- retrieve player leaderboards
+- retrieve server list
+- retrieve individual game server's details for (including player list)
+- support for all platforms (PC, Xbox 360, PS3)
 - full support for async Python
 
 ## Installation
