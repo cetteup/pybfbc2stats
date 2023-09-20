@@ -12,6 +12,7 @@ Python 🐍 library for retrieving statistics of Battlefield: Bad Company 2 play
 - lookup players/personas by id or name
 - search for players/personas by name (with wildcard support)
 - retrieve all available player statistics
+- retrieve player dogtag records
 - retrieve player leaderboards
 - retrieve server list
 - retrieve individual game server's details for (including player list)
