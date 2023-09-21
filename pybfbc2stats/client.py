@@ -579,6 +579,8 @@ class FeslClient(Client):
                 raise ParameterError('FESL returned invalid parameter error')
             elif error_code == b'101' and method == b'NuLookupUserInfo':
                 raise PlayerNotFoundError('FESL returned player not found error')
+            elif error_code == b'101' and method == b'NuSearchOwners':
+                raise SearchError('FESL returned player not found error')
             elif error_code == b'104' and method == b'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
                 # (the error message just says: "The data necessary for this transaction was not found")
