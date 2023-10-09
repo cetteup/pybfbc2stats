@@ -798,8 +798,9 @@ class TheaterClient(Client):
             raise error
         glst = self.parse_simple_response(glst_response)
 
-        # GLST contains LOBBY-NUM-GAMES and NUM-GAMES. In rare cases we get NUM-GAMES < LOBBY-NUM-GAMES,
-        # with Theater only returning NUM-GAMES servers. Just using NUM-GAMES here should be safe
+        # GLST contains LOBBY-NUM-GAMES (total number of games in lobby) and
+        # NUM-GAMES (number of games matching filters), so NUM-GAMES <= LOBBY-NUM-GAMES,
+        # => Use NUM-GAMES since Theater will only return GDAT packet for servers matching the filters
         num_games = int(glst['NUM-GAMES'])
 
         # Retrieve GDAT for all servers
