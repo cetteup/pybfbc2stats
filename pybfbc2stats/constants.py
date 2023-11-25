@@ -69,6 +69,7 @@ class TheaterTransmissionType(TransmissionType):
 DEFAULT_BUFFER_SIZE = 8096
 HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'
+ENCODING = 'utf8'
 EPOCH_START = datetime(2008, 1, 1, tzinfo=timezone.utc)
 VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank', b'recp']
 VALID_HEADER_TYPES_THEATER = [b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']

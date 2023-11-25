@@ -1,12 +1,15 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 
 from .constants import HEADER_LENGTH, VALID_HEADER_TYPES_FESL, VALID_HEADER_TYPES_THEATER, \
-    VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER, TransmissionType, FeslTransmissionType, TheaterTransmissionType
+    VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER, TransmissionType, FeslTransmissionType, TheaterTransmissionType, \
+    ENCODING
 from .exceptions import Error
+from .payload import Payload
 
 
 class Packet:
     header: bytes
+    # TODO Refactor to Payload
     body: bytes
 
     def __init__(self, header: bytes = b'', body: bytes = b''):
@@ -14,7 +17,13 @@ class Packet:
         self.body = body
 
     @classmethod
-    def build(cls, header_stub: bytes, body_data: bytes, transmission_type: TransmissionType, tid: Optional[int] = None):
+    def build(
+            cls,
+            header_stub: bytes,
+            body_data: Union[bytes, Payload],
+            transmission_type: TransmissionType,
+            tid: Optional[int] = None
+    ):
         """
         Build and return a new packet from a given header stub (first 8 header bytes) and the given body data
         :param header_stub: Packet header stub, consisting of at least the first 4 bytes
@@ -32,7 +41,7 @@ class Packet:
         """
         header = header_stub + b'\x00' * (HEADER_LENGTH - len(header_stub))
         # Add "tail" to body
-        body = body_data + b'\n\x00'
+        body = bytes(body_data) + b'\x00'
         self = cls(header, body)
         # Update transaction id if given
         if tid is not None:
@@ -230,7 +239,7 @@ class TheaterPacket(Packet):
         Set/update the transaction id/packet counter in packet body (requires re-calculation of length indicators)
         """
         # Remove body "tail", add tid and add "tail" again
-        self.body = self.body[:-2] + b'\nTID=' + str(tid).encode('utf8') + b'\n\x00'
+        self.body = self.body[:-1] + b'\nTID=' + str(tid).encode(ENCODING) + b'\x00'
 
     def get_tid(self) -> int:
         """
