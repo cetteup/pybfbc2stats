@@ -66,7 +66,7 @@ class TheaterTransmissionType(TransmissionType):
     ErrorResponse = 3
 
 
-DEFAULT_BUFFER_SIZE = 8096
+FRAGMENT_SIZE = 8096
 HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'
 ENCODING = 'utf8'

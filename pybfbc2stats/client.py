@@ -6,7 +6,7 @@ from urllib.parse import quote_from_bytes, unquote_to_bytes
 
 from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
-from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
+from .constants import STATS_KEYS, FRAGMENT_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
     EPOCH_START, ENCODING
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
@@ -353,7 +353,7 @@ class FeslClient(Client):
                 clientVersion='2.0',
                 SDKVersion='5.1.2.0.0',
                 protocolVersion='2.0',
-                fragmentSize=DEFAULT_BUFFER_SIZE,
+                fragmentSize=FRAGMENT_SIZE,
                 clientType='server'
             ),
             FeslTransmissionType.SinglePacketRequest,
@@ -484,15 +484,14 @@ class FeslClient(Client):
         # Base64 encode query for transfer
         payload_b64 = b64encode(bytes(payload) + b'\x00')
         encoded_payload_size = str(len(payload_b64))
-        available_packet_length = DEFAULT_BUFFER_SIZE - (24 + len(encoded_payload_size))
 
         # URL encode/quote query
         payload_enc = quote_from_bytes(payload_b64).encode(ENCODING)
 
         # Split query into chunks and build packets around them
         chunk_packets = []
-        for i in range(0, len(payload_enc), available_packet_length):
-            payload_chunk = payload_enc[i:i + available_packet_length]
+        for i in range(0, len(payload_enc), FRAGMENT_SIZE):
+            payload_chunk = payload_enc[i:i + FRAGMENT_SIZE]
             # TODO Add decoded size?
             chunk_packet = FeslPacket.build(
                 b'rank',
