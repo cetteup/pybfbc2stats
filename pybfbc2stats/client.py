@@ -481,6 +481,17 @@ class FeslClient(Client):
             periodPast=0
         )
         payload.set_list(keys, 'keys')
+
+        if len(payload) <= FRAGMENT_SIZE:
+            return [
+                FeslPacket.build(
+                    b'rank',
+                    payload,
+                    FeslTransmissionType.SinglePacketRequest,
+                    tid
+                )
+            ]
+
         # Base64 encode query for transfer
         payload_b64 = b64encode(bytes(payload) + b'\x00')
         encoded_payload_size = str(len(payload_b64))

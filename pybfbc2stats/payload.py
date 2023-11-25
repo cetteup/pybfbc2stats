@@ -31,6 +31,9 @@ class Payload:
 
         return b'\n'.join(lines)
 
+    def __len__(self):
+        return len(bytes(self))
+
     def update(self, **kwargs: PayloadValue) -> None:
         for key, value in kwargs.items():
             self.set(key, value)
