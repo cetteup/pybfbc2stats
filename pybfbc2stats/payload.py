@@ -6,12 +6,13 @@ StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
 FloatValue = Union[float, str, bytes]
 PayloadValue = Optional[Union[StrValue, IntValue, FloatValue]]
+PayloadStruct = Optional[Union[Dict[str, Union[PayloadValue, 'PayloadStruct']], List[Union[PayloadValue, 'PayloadStruct']]]]
 
 
 class Payload:
     data: Dict[str, bytes]
 
-    def __init__(self, **kwargs: PayloadValue):
+    def __init__(self, **kwargs: Union[PayloadValue, PayloadStruct]):
         self.data = dict()
         self.update(**kwargs)
 
@@ -34,20 +35,33 @@ class Payload:
     def __len__(self):
         return len(bytes(self))
 
-    def update(self, **kwargs: PayloadValue) -> None:
+    def update(self, **kwargs: Union[PayloadValue, PayloadStruct]) -> None:
         for key, value in kwargs.items():
             self.set(key, value)
 
-    def set(self, key: str, value: PayloadValue) -> None:
+    def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
+        path = self.build_path(*args, key)
+        if isinstance(value, dict):
+            # TODO Would not overwrite old keys under path if existing sub_key is not in value
+            for sub_key, sub_value in value.items():
+                self.set(sub_key, sub_value, *args, key)
+            return
+
+        if isinstance(value, list):
+            for index, sub_value in enumerate(value):
+                self.set(index, sub_value, *args, key)
+            return
+
         if isinstance(value, bytes):
-            self.data[key] = value
+            self.data[path] = value
             return
 
         if value is None:
-            self.data[key] = b''
+            self.data[path] = b''
             return
 
-        self.data[key] = str(value).encode(ENCODING)
+        # TODO Quote values
+        self.data[path] = str(value).encode(ENCODING)
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[bytes]:
         return self.data.get(key, default)
@@ -73,26 +87,6 @@ class Payload:
 
         return float(value.decode(ENCODING))
 
-
-class FeslPayload(Payload):
-    # TODO Make more generic, just handle any passed data format
-    def set_list(self, items: List[Union[PayloadValue, Dict[str, PayloadValue]]], prefix: str) -> None:
-        # TODO This comment is outdated, format is different for non-dict values
-        # Convert item list following "prefix.index.key=value"-format
-        for index, item in enumerate(items):
-            if isinstance(item, dict):
-                for key, value in item.items():
-                    dotted_elements = [prefix, index, key]
-                    # dict with prefix: userInfo.0.userName=NoobKillah
-                    self.set(self.build_list_key(dotted_elements), value)
-            else:
-                dotted_elements = [prefix, index]
-                # list with prefix only: keys.0=accuracy
-                self.set(self.build_list_key(dotted_elements), item)
-
-        # Add list length indicator
-        self.set(f'{prefix}.[]', len(items))
-
     @staticmethod
-    def build_list_key(dotted_elements: List[Union[str, int]]) -> str:
-        return '.'.join(map(str, dotted_elements))
+    def build_path(*args: Union[str, int]) -> str:
+        return '.'.join(map(str, args))

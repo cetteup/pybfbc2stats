@@ -12,7 +12,7 @@ from .constants import STATS_KEYS, FRAGMENT_SIZE, FeslStep, Namespace, Platform,
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
-from .payload import Payload, FeslPayload, StrValue, IntValue
+from .payload import Payload, StrValue, IntValue
 
 
 class Client:
@@ -344,7 +344,7 @@ class FeslClient(Client):
     def build_hello_packet(tid: int, client_string: StrValue) -> FeslPacket:
         return FeslPacket.build(
             b'fsys',
-            FeslPayload(
+            Payload(
                 TXN='Hello',
                 clientString=client_string,
                 sku='PC',
@@ -364,7 +364,7 @@ class FeslClient(Client):
     def build_memcheck_packet() -> FeslPacket:
         return FeslPacket.build(
             b'fsys',
-            FeslPayload(TXN='MemCheck', result=None),
+            Payload(TXN='MemCheck', result=None),
             FeslTransmissionType.SinglePacketResponse
         )
 
@@ -372,7 +372,7 @@ class FeslClient(Client):
     def build_login_packet(tid: int, username: StrValue, password: StrValue) -> FeslPacket:
         return FeslPacket.build(
             b'acct',
-            FeslPayload(
+            Payload(
                 TXN='Login',
                 returnEncryptedInfo=0,
                 name=username,
@@ -387,7 +387,7 @@ class FeslClient(Client):
     def build_logout_packet(tid: int) -> FeslPacket:
         return FeslPacket.build(
             b'fsys',
-            FeslPayload(TXN='Goodbye', reason='GOODBYE_CLIENT_NORMAL', message='"Disconnected via front-end"'),
+            Payload(TXN='Goodbye', reason='GOODBYE_CLIENT_NORMAL', message='"Disconnected via front-end"'),
             FeslTransmissionType.SinglePacketRequest,
             tid
         )
@@ -396,7 +396,7 @@ class FeslClient(Client):
     def build_ping_packet() -> FeslPacket:
         return FeslPacket.build(
             b'fsys',
-            FeslPayload(TXN='Ping'),
+            Payload(TXN='Ping'),
             FeslTransmissionType.SinglePacketResponse
         )
 
@@ -415,8 +415,7 @@ class FeslClient(Client):
             } for identifier in user_identifiers
         ]
 
-        payload = FeslPayload(TXN='NuLookupUserInfo')
-        payload.set_list(lookups, 'userInfo')
+        payload = Payload(TXN='NuLookupUserInfo', userInfo=lookups)
         # Use LookupUserInfo instead of NuLookupUserInfo for legacy namespaces
         if Namespace.is_legacy_namespace(namespace):
             payload.set('TXN', 'LookupUserInfo')
@@ -430,7 +429,7 @@ class FeslClient(Client):
 
     @staticmethod
     def build_search_packet(tid: int, screen_name: StrValue, namespace: Union[Namespace, StrValue]) -> FeslPacket:
-        payload = FeslPayload(
+        payload = Payload(
             TXN='NuSearchOwners',
             screenName=screen_name,
             searchType=1,
@@ -452,7 +451,7 @@ class FeslClient(Client):
     @staticmethod
     def build_leaderboard_query_packet(tid: int, min_rank: IntValue, max_rank: IntValue,
                                        sort_by: StrValue, keys: List[StrValue]) -> FeslPacket:
-        payload = FeslPayload(
+        payload = Payload(
             TXN='GetTopNAndStats',
             key=sort_by,
             ownerType=1,
@@ -460,9 +459,9 @@ class FeslClient(Client):
             maxRank=max_rank,
             periodId=0,
             periodPast=0,
-            rankOrder=0
+            rankOrder=0,
+            keys=keys
         )
-        payload.set_list(keys, 'keys')
 
         return FeslPacket.build(
             b'rank',
@@ -473,14 +472,14 @@ class FeslClient(Client):
 
     @staticmethod
     def build_stats_query_packets(tid: int, userid: IntValue, keys: List[StrValue]) -> List[FeslPacket]:
-        payload = FeslPayload(
+        payload = Payload(
             TXN='GetStats',
             owner=userid,
             ownerType=1,
             periodId=0,
-            periodPast=0
+            periodPast=0,
+            keys=keys
         )
-        payload.set_list(keys, 'keys')
 
         if len(payload) <= FRAGMENT_SIZE:
             return [
@@ -506,7 +505,7 @@ class FeslClient(Client):
             # TODO Add decoded size?
             chunk_packet = FeslPacket.build(
                 b'rank',
-                FeslPayload(size=encoded_payload_size, data=payload_chunk),
+                Payload(size=encoded_payload_size, data=payload_chunk),
                 FeslTransmissionType.MultiPacketRequest,
                 tid
             )
@@ -519,7 +518,7 @@ class FeslClient(Client):
         return FeslPacket.build(
             b'recp',
             # Could also use GetRecord to receive a list
-            FeslPayload(TXN='GetRecordAsMap', recordName='dogtags', owner=userid),
+            Payload(TXN='GetRecordAsMap', recordName='dogtags', owner=userid),
             FeslTransmissionType.SinglePacketRequest,
             tid
         )
