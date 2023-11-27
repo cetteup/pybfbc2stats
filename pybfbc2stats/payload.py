@@ -1,14 +1,14 @@
 from typing import Dict, Union, Optional, List
 
-from .constants import ENCODING
-from .exceptions import ParameterError
+from .constants import ENCODING, StructLengthIndicator
+from .exceptions import Error, ParameterError
 
 StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
 FloatValue = Union[float, str, bytes]
 PayloadValue = Optional[Union[StrValue, IntValue, FloatValue]]
 PayloadStruct = Optional[Union[Dict[str, Union[PayloadValue, 'PayloadStruct']], List[Union[PayloadValue, 'PayloadStruct']]]]
-
+ParsedPayloadStruct = Dict[str, Union[bytes, List[Union[bytes, 'ParsedPayloadStruct']], 'ParsedPayloadStruct']]
 
 class Payload:
     data: Dict[str, bytes]
@@ -76,7 +76,7 @@ class Payload:
             return
 
         if value is None:
-            self.data[path] = b''
+            self.data[path] = bytes()
             return
 
         # TODO Quote values
@@ -113,13 +113,103 @@ class Payload:
 
         return float(value.decode(ENCODING))
 
+    def get_list(self, key: str, default: Optional[List[Union[bytes, ParsedPayloadStruct]]] = None) -> Optional[List[Union[bytes, ParsedPayloadStruct]]]:
+        if not self.has_values_at_path(self.data, key):
+            return default
+
+        as_struct = self.get_struct(key)
+        return self.struct_to_list(as_struct)
+
+    def get_dict(self, key: str, default: Optional[ParsedPayloadStruct] = None) -> Optional[ParsedPayloadStruct]:
+        if not self.has_values_at_path(self.data, key):
+            return default
+
+        return self.get_struct(key)
+
+    def get_struct(self, path: str) -> ParsedPayloadStruct:
+        keys = self.destruct_path(path)
+        groups = self.group_by_path(self.data, path)
+        values = {}
+        for group_path, group in groups.items():
+            group_keys = self.destruct_path(group_path)
+            if len(group_keys) == 1 and group_keys[0] == path:
+                raise Error(f'Payload value at {path} is not a struct')
+
+            target_key = self.build_path(*tuple(group_keys[len(keys):]))
+            if len(group) > 1:
+                # List entry is a nested struct => recurse, add all
+                struct = self.get_struct(group_path)
+                if StructLengthIndicator.list in struct:
+                    values[target_key] = self.struct_to_list(struct)
+                else:
+                    values[target_key] = struct
+            elif len(group) == 1:
+                # Only one entry under list index path => scalar list, add value directly
+                values[target_key] = list(group.values()).pop()
+            else:
+                # An empty group should not be possible, so this error should never be raised
+                raise Error(f'Payload struct at {path} is missing an item at {group_path}')
+
+        return values
+
+    @staticmethod
+    def filter_by_path(data: Dict[str, bytes], path: str) -> Dict[str, bytes]:
+        keys = Payload.destruct_path(path)
+        matches = dict()
+        for item_path, item_value in data.items():
+            item_keys = Payload.destruct_path(item_path)
+            if item_keys[:len(keys)] == keys:
+                matches[item_path] = item_value
+
+        return matches
+
+    @staticmethod
+    def group_by_path(data: Dict[str, bytes], path: str) -> Dict[str, Dict[str, bytes]]:
+        keys = Payload.destruct_path(path)
+        items = Payload.filter_by_path(data, path)
+        groups = dict()
+        for item_path, item_value in items.items():
+            item_keys = Payload.destruct_path(item_path)
+            group_path = Payload.build_path(*tuple(item_keys[:len(keys) + 1]))
+            if group_path not in groups:
+                groups[group_path] = dict()
+            groups[group_path][item_path] = item_value
+
+        return groups
+
+    @staticmethod
+    def has_values_at_path(data: Dict[str, bytes], path: str) -> bool:
+        group_paths = Payload.group_by_path(data, path).keys()
+        return len(group_paths) >= 1
+
+
+    @staticmethod
+    def struct_to_list(struct: ParsedPayloadStruct) -> list:
+        length = int(struct.get(StructLengthIndicator.list, b'-1').decode(ENCODING))
+        if length == -1:
+            raise ParameterError('Cannot convert non-list-struct to list')
+
+        values = []
+        for index in range(length):
+            value = struct.get(str(index))
+            if value is None:
+                raise Error('Incomplete payload list')
+
+            if isinstance(value, dict) and StructLengthIndicator.list in value:
+                # Value is another list-struct => recurse and add nested list
+                values.append(Payload.struct_to_list(value))
+            else:
+                values.append(value)
+
+        return values
+
     @staticmethod
     def build_path(*args: Union[str, int]) -> str:
         return '.'.join(map(str, args))
 
     @staticmethod
     def build_list_length_path(path: str) -> str:
-        return Payload.build_path(path, '[]')
+        return Payload.build_path(path, StructLengthIndicator.list)
 
     @staticmethod
     def destruct_path(path: str) -> List[str]:

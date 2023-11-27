@@ -42,6 +42,15 @@ class StructuredDataType(bytes, Enum):
     map = b'{}'
 
 
+class StructLengthIndicator(str, Enum):
+    list = '[]'
+    map = '{}'
+
+    def __str__(self):
+        return self.value
+
+
+
 class Platform(int, Enum):
     pc = 1
     xbox360 = 2

@@ -1,6 +1,6 @@
 import unittest
 
-from pybfbc2stats import ParameterError
+from pybfbc2stats import Error, ParameterError
 from pybfbc2stats.payload import Payload
 
 
@@ -321,3 +321,178 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(1.0, existing)
         self.assertEqual(0.0, default)
         self.assertIsNone(missing)
+
+    def test_get_list(self):
+        # GIVEN
+        payload = Payload(list=[b'bytes', 'str', 1, 1.0, None])
+
+        # WHEN
+        existing = payload.get_list('list')
+        default = payload.get_list('missing', [])
+        missing = payload.get_list('missing')
+
+        # THEN
+        self.assertEqual([b'bytes', b'str', b'1', b'1.0', b''], existing)
+        self.assertEqual([], default)
+        self.assertIsNone(missing)
+
+    def test_get_list_nested(self):
+        # GIVEN
+        payload = Payload(list=[
+            [b'bytes', 'str', 1, 1.0, None],
+            [b'other-bytes', 'other-str', 2, 2.0, None]
+        ])
+
+        # WHEN
+        actual = payload.get_list('list')
+
+        # THEN
+        self.assertEqual([
+            [b'bytes', b'str', b'1', b'1.0', b''],
+            [b'other-bytes', b'other-str', b'2', b'2.0', b'']
+        ], actual)
+
+    def test_get_list_dict(self):
+        # GIVEN
+        payload = Payload(list=[
+            {
+                'bytes': b'bytes',
+                'str': 'str',
+                'int': 1,
+                'float': 1.0,
+                'none': None
+            },
+            {
+                'bytes': b'other-bytes',
+                'str': 'other-str',
+                'int': 2,
+                'float': 2.0,
+                'none': None
+            }
+        ])
+
+        # WHEN
+        actual = payload.get_list('list')
+
+        # THEN
+        self.assertEqual([
+            {
+                'bytes': b'bytes',
+                'str': b'str',
+                'int': b'1',
+                'float': b'1.0',
+                'none': b''
+            },
+            {
+                'bytes': b'other-bytes',
+                'str': b'other-str',
+                'int': b'2',
+                'float': b'2.0',
+                'none': b''
+            }
+        ], actual)
+
+    def test_get_list_missing_length_indicator(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'list.0=value')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_list, 'list')
+
+    def test_get_list_missing_index(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'list.[]=1')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_list, 'list')
+
+    def test_get_list_not_a_struct(self):
+        # GIVEN
+        payload = Payload(key=b'value')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_list, 'key')
+
+    def test_get_list_not_a_list(self):
+        # GIVEN
+        payload = Payload(dict={
+            'key': b'value'
+        })
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_list, 'dict')
+
+    def test_get_dict(self):
+        # GIVEN
+        payload = Payload(dict={
+            'bytes': b'bytes',
+            'str': 'str',
+            'int': 1,
+            'float': 1.0,
+            'none': None
+        })
+
+        # WHEN
+        existing = payload.get_dict('dict')
+        default = payload.get_dict('missing', {})
+        missing = payload.get_dict('missing')
+
+        # THEN
+        self.assertEqual({
+            'bytes': b'bytes',
+            'str': b'str',
+            'int': b'1',
+            'float': b'1.0',
+            'none': b''
+        }, existing)
+        self.assertEqual({}, default)
+        self.assertIsNone(missing)
+
+    def test_get_dict_nested(self):
+        # GIVEN
+        payload = Payload(dict={
+            'key': {
+                'bytes': b'bytes',
+                'str': 'str',
+                'int': 1,
+                'float': 1.0,
+                'none': None
+            }
+        })
+
+        # WHEN
+        actual = payload.get_dict('dict')
+
+        # THEN
+        self.assertEqual({
+            'key': {
+                'bytes': b'bytes',
+                'str': b'str',
+                'int': b'1',
+                'float': b'1.0',
+                'none': b''
+            }
+        }, actual)
+
+    def test_get_dict_list(self):
+        # GIVEN
+        payload = Payload(dict={
+            'key': [b'bytes', 'str', 1, 1.0, None],
+            'other-key': [b'other-bytes', 'other-str', 2, 2.0, None]
+        })
+
+        # WHEN
+        actual = payload.get_dict('dict')
+
+        # THEN
+        self.assertEqual({
+            'key': [b'bytes', b'str', b'1', b'1.0', b''],
+            'other-key': [b'other-bytes', b'other-str', b'2', b'2.0', b'']
+        }, actual)
+
+    def test_get_dict_not_a_struct(self):
+        # GIVEN
+        payload = Payload(key=b'value')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_dict, 'key')
