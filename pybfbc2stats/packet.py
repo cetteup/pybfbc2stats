@@ -146,12 +146,12 @@ class Packet:
           contains a non-zero packet body indicator
         """
         if not len(self.header) == HEADER_LENGTH or self.bytes2int(self.header[8:12]) <= 0:
-            raise Error('Packet header is not valid')
+            raise Error(f'Packet header is not valid (mismatched length/zero-length body indicator): {self.header}')
 
     def validate_body(self) -> None:
         # Validate indicated length matches total length of received data
         if self.indicated_length() != len(self.header) + len(self.body):
-            raise Error('Received packet with invalid body')
+            raise Error('Received packet with invalid body (mismatched length)')
 
 
 class FeslPacket(Packet):
@@ -221,7 +221,7 @@ class FeslPacket(Packet):
         """
         valid = self.header[:4] in VALID_HEADER_TYPES_FESL and self.header[4] in [0, 128, 176, 192, 240]
         if not valid:
-            raise Error('Packet header is not valid')
+            raise Error(f'Packet header is not valid (invalid data/transmission type): {self.header}')
 
 
 class TheaterPacket(Packet):
@@ -289,4 +289,4 @@ class TheaterPacket(Packet):
                   self.header[4:8] in VALID_HEADER_ERROR_INDICATORS))
 
         if not valid:
-            raise Error('Packet header is not valid')
+            raise Error(f'Packet header is not valid (invalid data/transmission type): {self.header}')
