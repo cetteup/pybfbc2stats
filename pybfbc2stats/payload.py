@@ -58,9 +58,9 @@ class Payload:
             self.set(str(length + index), value)
 
     def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
+        self.remove(key)  # Ensure we remove any existing data under key
         path = self.build_path(*args, key)
         if isinstance(value, dict):
-            # TODO Would not overwrite old keys under path if existing sub_key is not in value
             for sub_key, sub_value in value.items():
                 self.set(sub_key, sub_value, *args, key)
             return
@@ -81,6 +81,13 @@ class Payload:
 
         # TODO Quote values
         self.data[path] = str(value).encode(ENCODING)
+
+    def remove(self, key: str) -> None:
+        # Cast to list to be able to change keys in loop (avoid dict size changed during iteration)
+        for path in list(self.data.keys()):
+            root_key, *_ = self.destruct_path(path)
+            if root_key == key:
+                self.data.pop(path)
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[bytes]:
         return self.data.get(key, default)
@@ -113,3 +120,7 @@ class Payload:
     @staticmethod
     def build_list_length_path(path: str) -> str:
         return Payload.build_path(path, '[]')
+
+    @staticmethod
+    def destruct_path(path: str) -> List[str]:
+        return path.split('.')

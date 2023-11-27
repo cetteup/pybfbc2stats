@@ -146,6 +146,29 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'', payload.data.get('none'))
         self.assertEqual(6, len(payload.data))
 
+    def test_set_overwrite_struct(self):
+        # GIVEN
+        payload = Payload(
+            dict={
+                'key': 'value',
+                'other-key': 'other-value',
+                'nested-dict': {
+                    'sub-key': 'sub-value'
+                }
+            },
+            list=['one', 'two', 'three']
+        )
+
+        # WHEN
+        payload.set('dict', {'new-key': 'new-value'})
+        payload.set('list', ['four'])
+
+        # THEN
+        self.assertEqual(b'new-value', payload.data.get('dict.new-key'))
+        self.assertEqual(b'four', payload.data.get('list.0'))
+        self.assertEqual(b'1', payload.data.get('list.[]'))
+        self.assertEqual(3, len(payload.data))
+
     def test_set_dict(self):
         # GIVEN
         payload = Payload(existing='existing')
