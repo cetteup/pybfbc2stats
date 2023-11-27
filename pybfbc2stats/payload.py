@@ -200,11 +200,7 @@ class Payload:
             if value is None:
                 raise Error('Incomplete payload list')
 
-            if isinstance(value, dict) and StructLengthIndicator.list in value:
-                # Value is another list-struct => recurse and add nested list
-                values.append(Payload.struct_to_list(value))
-            else:
-                values.append(value)
+            values.append(value)
 
         return values
 
