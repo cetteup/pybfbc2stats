@@ -53,9 +53,12 @@ class Payload:
         if not self.is_list:
             raise ParameterError('Cannot set index values on non-list payload')
 
+        # Remove existing length indicator because it would mess with indexes
+        self.remove(StructLengthIndicator.list)
         length = len(self.data)
         for index, value in enumerate(args):
             self.set(str(length + index), value)
+        self.set(StructLengthIndicator.list, len(self.data))
 
     def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
         self.remove(key)  # Ensure we remove any existing data under key

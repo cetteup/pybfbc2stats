@@ -45,7 +45,8 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'1', payload.data.get('2'))
         self.assertEqual(b'1.0', payload.data.get('3'))
         self.assertEqual(b'', payload.data.get('4'))
-        self.assertEqual(5, len(payload.data))
+        self.assertEqual(b'5', payload.data.get('[]'))
+        self.assertEqual(6, len(payload.data))
 
     def test_from_bytes(self):
         # GIVEN
@@ -124,7 +125,8 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'2', payload.data.get('7'))
         self.assertEqual(b'2.0', payload.data.get('8'))
         self.assertEqual(b'', payload.data.get('9'))
-        self.assertEqual(10, len(payload.data))
+        self.assertEqual(b'10', payload.data.get('[]'))
+        self.assertEqual(11, len(payload.data))
 
     def test_set_scalar(self):
         # GIVEN
