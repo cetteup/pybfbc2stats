@@ -3,6 +3,7 @@ from typing import Dict, Union, Optional, List
 from .constants import ENCODING, StructLengthIndicator
 from .exceptions import Error, ParameterError
 
+PayloadData = Dict[str, bytes]
 StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
 FloatValue = Union[float, str, bytes]
@@ -11,16 +12,14 @@ PayloadStruct = Optional[Union[Dict[str, Union[PayloadValue, 'PayloadStruct']], 
 ParsedPayloadStruct = Dict[str, Union[bytes, List[Union[bytes, 'ParsedPayloadStruct']], 'ParsedPayloadStruct']]
 
 class Payload:
-    data: Dict[str, bytes]
-    is_list: bool
+    data: PayloadData
 
     def __init__(self, *args: Union[PayloadValue, PayloadStruct], **kwargs: Union[PayloadValue, PayloadStruct]):
         self.data = dict()
         if len(args) > 0:
-            self.is_list = True
+            self.set(StructLengthIndicator.list, 0)
             self.extend(*args)
         else:
-            self.is_list = False
             self.update(**kwargs)
 
     @classmethod
@@ -43,26 +42,31 @@ class Payload:
         return len(bytes(self))
 
     def update(self, **kwargs: Union[PayloadValue, PayloadStruct]) -> None:
-        if self.is_list:
+        if self.is_list(self.data):
             raise ParameterError('Cannot set key values on list payload')
 
         for key, value in kwargs.items():
             self.set(key, value)
 
     def extend(self, *args) -> None:
-        if not self.is_list:
+        length = self.get_list_length(self.data)
+        if length == -1:
             raise ParameterError('Cannot set index values on non-list payload')
 
         # Remove existing length indicator because it would mess with indexes
         self.remove(StructLengthIndicator.list)
-        length = len(self.data)
+
         for index, value in enumerate(args):
             self.set(str(length + index), value)
-        self.set(StructLengthIndicator.list, len(self.data))
+        self.set(StructLengthIndicator.list, length + len(args))
 
     def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
-        self.remove(key)  # Ensure we remove any existing data under key
         path = self.build_path(*args, key)
+
+        # Ensure we remove any existing data under path (only run during base-level set)
+        if len(args) == 0:
+            self.remove(path)
+
         if isinstance(value, dict):
             for sub_key, sub_value in value.items():
                 self.set(sub_key, sub_value, *args, key)
@@ -87,10 +91,8 @@ class Payload:
 
     def remove(self, key: str) -> None:
         # Cast to list to be able to change keys in loop (avoid dict size changed during iteration)
-        for path in list(self.data.keys()):
-            root_key, *_ = self.destruct_path(path)
-            if root_key == key:
-                self.data.pop(path)
+        for item_key in self.filter_by_path(self.data, key):
+            self.data.pop(item_key)
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[bytes]:
         return self.data.get(key, default)
@@ -156,7 +158,7 @@ class Payload:
         return values
 
     @staticmethod
-    def filter_by_path(data: Dict[str, bytes], path: str) -> Dict[str, bytes]:
+    def filter_by_path(data: PayloadData, path: str) -> Dict[str, bytes]:
         keys = Payload.destruct_path(path)
         matches = dict()
         for item_path, item_value in data.items():
@@ -167,7 +169,7 @@ class Payload:
         return matches
 
     @staticmethod
-    def group_by_path(data: Dict[str, bytes], path: str) -> Dict[str, Dict[str, bytes]]:
+    def group_by_path(data: PayloadData, path: str) -> Dict[str, PayloadData]:
         keys = Payload.destruct_path(path)
         items = Payload.filter_by_path(data, path)
         groups = dict()
@@ -181,14 +183,14 @@ class Payload:
         return groups
 
     @staticmethod
-    def has_values_at_path(data: Dict[str, bytes], path: str) -> bool:
+    def has_values_at_path(data: PayloadData, path: str) -> bool:
         group_paths = Payload.group_by_path(data, path).keys()
         return len(group_paths) >= 1
 
 
     @staticmethod
     def struct_to_list(struct: ParsedPayloadStruct) -> list:
-        length = int(struct.get(StructLengthIndicator.list, b'-1').decode(ENCODING))
+        length = Payload.get_list_length(struct)
         if length == -1:
             raise ParameterError('Cannot convert non-list-struct to list')
 
@@ -205,6 +207,14 @@ class Payload:
                 values.append(value)
 
         return values
+
+    @staticmethod
+    def get_list_length(data: Union[PayloadData, ParsedPayloadStruct]) -> int:
+        return int(data.get(StructLengthIndicator.list, b'-1').decode(ENCODING))
+
+    @staticmethod
+    def is_list(data: Union[PayloadData, ParsedPayloadStruct]) -> bool:
+        return Payload.get_list_length(data) != -1
 
     @staticmethod
     def build_path(*args: Union[str, int]) -> str:

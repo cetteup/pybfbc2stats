@@ -48,6 +48,66 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'5', payload.data.get('[]'))
         self.assertEqual(6, len(payload.data))
 
+    def test_init_list_nested(self):
+        # GIVEN
+        args = [
+            [b'bytes', 'str', 1, 1.0, None],
+            [b'other-bytes', 'other-str', 2, 2.0, None]
+        ]
+
+        # WHEN
+        payload = Payload(*args)
+
+        # THEN
+        self.assertEqual(b'bytes', payload.data.get('0.0'))
+        self.assertEqual(b'str', payload.data.get('0.1'))
+        self.assertEqual(b'1', payload.data.get('0.2'))
+        self.assertEqual(b'1.0', payload.data.get('0.3'))
+        self.assertEqual(b'', payload.data.get('0.4'))
+        self.assertEqual(b'5', payload.data.get('0.[]'))
+        self.assertEqual(b'other-bytes', payload.data.get('1.0'))
+        self.assertEqual(b'other-str', payload.data.get('1.1'))
+        self.assertEqual(b'2', payload.data.get('1.2'))
+        self.assertEqual(b'2.0', payload.data.get('1.3'))
+        self.assertEqual(b'', payload.data.get('1.4'))
+        self.assertEqual(b'5', payload.data.get('1.[]'))
+        self.assertEqual(b'2', payload.data.get('[]'))
+
+    def test_init_list_dict(self):
+        # GIVEN
+        args = [
+            {
+                'bytes': b'bytes',
+                'str': 'str',
+                'int': 1,
+                'float': 1.0,
+                'none': None
+            },
+            {
+                'bytes': b'other-bytes',
+                'str': 'other-str',
+                'int': 2,
+                'float': 2.0,
+                'none': None
+            }
+        ]
+
+        # WHEN
+        payload = Payload(*args)
+
+        # THEN
+        self.assertEqual(b'bytes', payload.data.get('0.bytes'))
+        self.assertEqual(b'str', payload.data.get('0.str'))
+        self.assertEqual(b'1', payload.data.get('0.int'))
+        self.assertEqual(b'1.0', payload.data.get('0.float'))
+        self.assertEqual(b'', payload.data.get('0.none'))
+        self.assertEqual(b'other-bytes', payload.data.get('1.bytes'))
+        self.assertEqual(b'other-str', payload.data.get('1.str'))
+        self.assertEqual(b'2', payload.data.get('1.int'))
+        self.assertEqual(b'2.0', payload.data.get('1.float'))
+        self.assertEqual(b'', payload.data.get('1.none'))
+        self.assertEqual(b'2', payload.data.get('[]'))
+
     def test_from_bytes(self):
         # GIVEN
         data = b'TXN=MemCheck\nresult='
