@@ -1,5 +1,6 @@
 import unittest
 
+from pybfbc2stats import ParameterError
 from pybfbc2stats.payload import Payload
 
 
@@ -23,6 +24,27 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'1', payload.data.get('int'))
         self.assertEqual(b'1.0', payload.data.get('float'))
         self.assertEqual(b'', payload.data.get('none'))
+        self.assertEqual(5, len(payload.data))
+
+    def test_init_list(self):
+        # GIVEN
+        args = [
+            b'bytes',
+            'str',
+            1,
+            1.0,
+            None
+        ]
+
+        # WHEN
+        payload = Payload(*args)
+
+        # THEN
+        self.assertEqual(b'bytes', payload.data.get('0'))
+        self.assertEqual(b'str', payload.data.get('1'))
+        self.assertEqual(b'1', payload.data.get('2'))
+        self.assertEqual(b'1.0', payload.data.get('3'))
+        self.assertEqual(b'', payload.data.get('4'))
         self.assertEqual(5, len(payload.data))
 
     def test_from_bytes(self):
@@ -69,6 +91,40 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'updated', payload.data.get('change'))
         self.assertEqual(b'added', payload.data.get('added'))
         self.assertEqual(3, len(payload.data))
+
+    def test_update_list(self):
+        # GIVEN
+        payload = Payload(b'bytes', 'str', 1, 1.0, None)
+
+        # WHEN/THEN
+        self.assertRaises(ParameterError, payload.update, key=b'value')
+
+    def test_extend(self):
+        # GIVEN
+        payload = Payload(bytes=b'bytes', str='str', int=1, float=1.0, none=None)
+
+        # WHEN/THEN
+        self.assertRaises(ParameterError, payload.extend, b'value')
+
+    def test_extend_list(self):
+        # GIVEN
+        payload = Payload(b'bytes', 'str', 1, 1.0, None)
+
+        # WHEN
+        payload.extend(b'other-bytes', 'other-str', 2, 2.0, None)
+
+        # THEN
+        self.assertEqual(b'bytes', payload.data.get('0'))
+        self.assertEqual(b'str', payload.data.get('1'))
+        self.assertEqual(b'1', payload.data.get('2'))
+        self.assertEqual(b'1.0', payload.data.get('3'))
+        self.assertEqual(b'', payload.data.get('4'))
+        self.assertEqual(b'other-bytes', payload.data.get('5'))
+        self.assertEqual(b'other-str', payload.data.get('6'))
+        self.assertEqual(b'2', payload.data.get('7'))
+        self.assertEqual(b'2.0', payload.data.get('8'))
+        self.assertEqual(b'', payload.data.get('9'))
+        self.assertEqual(10, len(payload.data))
 
     def test_set_scalar(self):
         # GIVEN

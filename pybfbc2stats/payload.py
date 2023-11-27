@@ -1,6 +1,7 @@
 from typing import Dict, Union, Optional, List
 
 from .constants import ENCODING
+from .exceptions import ParameterError
 
 StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
@@ -11,10 +12,16 @@ PayloadStruct = Optional[Union[Dict[str, Union[PayloadValue, 'PayloadStruct']], 
 
 class Payload:
     data: Dict[str, bytes]
+    is_list: bool
 
-    def __init__(self, **kwargs: Union[PayloadValue, PayloadStruct]):
+    def __init__(self, *args: Union[PayloadValue, PayloadStruct], **kwargs: Union[PayloadValue, PayloadStruct]):
         self.data = dict()
-        self.update(**kwargs)
+        if len(args) > 0:
+            self.is_list = True
+            self.extend(*args)
+        else:
+            self.is_list = False
+            self.update(**kwargs)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> 'Payload':
@@ -36,8 +43,19 @@ class Payload:
         return len(bytes(self))
 
     def update(self, **kwargs: Union[PayloadValue, PayloadStruct]) -> None:
+        if self.is_list:
+            raise ParameterError('Cannot set key values on list payload')
+
         for key, value in kwargs.items():
             self.set(key, value)
+
+    def extend(self, *args) -> None:
+        if not self.is_list:
+            raise ParameterError('Cannot set index values on non-list payload')
+
+        length = len(self.data)
+        for index, value in enumerate(args):
+            self.set(str(length + index), value)
 
     def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
         path = self.build_path(*args, key)
