@@ -49,7 +49,8 @@ class Payload:
 
         if isinstance(value, list):
             for index, sub_value in enumerate(value):
-                self.set(index, sub_value, *args, key)
+                self.set(str(index), sub_value, *args, key)
+            self.set(self.build_list_length_path(key), len(value), *args)
             return
 
         if isinstance(value, bytes):
@@ -90,3 +91,7 @@ class Payload:
     @staticmethod
     def build_path(*args: Union[str, int]) -> str:
         return '.'.join(map(str, args))
+
+    @staticmethod
+    def build_list_length_path(path: str) -> str:
+        return Payload.build_path(path, '[]')
