@@ -633,7 +633,7 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual('GetRecordAsMap', txn)
         self.assertEqual(0, ttl)
         self.assertEqual(1, state)
-        self.assertEqual('"2023-09-22 19%3a42%3a57.0"', last_modified)
+        self.assertEqual('2023-09-22 19:42:57.0', last_modified)
         self.assertEqual({
             '1055242182': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA',
             '1055257806': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA',
@@ -673,7 +673,7 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual('GetRecord', txn)
         self.assertEqual(0, ttl)
         self.assertEqual(1, state)
-        self.assertEqual('"2023-09-22 19%3a42%3a57.0"', last_modified)
+        self.assertEqual('2023-09-22 19:42:57.0', last_modified)
         self.assertEqual([
             {'key': b'1055242182', 'value': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA'},
             {'key': b'1055257806', 'value': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA'},
@@ -818,7 +818,7 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual('109.200.221.166', payload.get_str('I'))
         self.assertEqual('O', payload.get_str('J'))
         self.assertEqual(201104017, payload.get_int('HU'))
-        self.assertEqual('"T%3a20.02 S%3a 9.81 L%3a 0.00"', payload.get_str('B-U-Time'))
+        self.assertEqual('T:20.02 S: 9.81 L: 0.00', payload.get_str('B-U-Time'))
         self.assertEqual('1.0', payload.get_str('V'))
         self.assertEqual('CONQUEST', payload.get_str('B-U-gamemode'))
         self.assertEqual(26016, payload.get_int('P'))
@@ -828,7 +828,7 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(0, payload.get_int('B-numObservers'))
         self.assertEqual('G', payload.get_str('TYPE'))
         self.assertEqual(257, payload.get_int('LID'))
-        self.assertEqual('"T%3a 300 B%3a 1"', payload.get_str('B-U-Frames'))
+        self.assertEqual('T: 300 B: 1', payload.get_str('B-U-Frames'))
         self.assertEqual('RETAIL421378', payload.get_str('B-version'))
         self.assertEqual(0, payload.get_int('QP'))
         self.assertEqual(24, payload.get_int('MP'))

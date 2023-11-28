@@ -1,4 +1,5 @@
 from typing import Dict, Union, Optional, List
+from urllib.parse import unquote
 
 from .constants import ENCODING, StructLengthIndicator
 from .exceptions import Error, ParameterError
@@ -83,7 +84,7 @@ class Payload:
         if value is None:
             return default
 
-        return value.decode(ENCODING)
+        return self.unquote(value.decode(ENCODING))
 
     def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
         value = self.get(key)
@@ -234,3 +235,7 @@ class Payload:
     @staticmethod
     def destruct_path(path: str) -> List[str]:
         return path.split('.')
+
+    @staticmethod
+    def unquote(quoted: str) -> str:
+        return unquote(quoted.strip('"'))
