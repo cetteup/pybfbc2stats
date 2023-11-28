@@ -441,3 +441,267 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN/THEN
         self.assertRaises(Error, payload.get_dict, 'key')
+
+    def test_personas_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'personas.[]=1\npersonas.0=yeas-yuwn-ep-lon\nTXN=NuGetPersonas')
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        personas = payload.get_list('personas')
+
+        # THEN
+        self.assertEqual('NuGetPersonas', txn)
+        self.assertEqual([b'yeas-yuwn-ep-lon'], personas)
+
+    def test_user_lookup_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'userInfo.0.namespace=PS3_SUB\nuserInfo.0.userId=891451503\nTXN=LookupUserInfo\n'
+            b'userInfo.0.xuid=8030785869539906380\nuserInfo.0.userName=sam707\nuserInfo.[]=1'
+        )
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        users = payload.get_list('userInfo')
+
+        # THEN
+        self.assertEqual('LookupUserInfo', txn)
+        self.assertEqual([
+            {'namespace': b'PS3_SUB', 'userId': b'891451503', 'xuid': b'8030785869539906380', 'userName': b'sam707'}
+        ], users)
+
+    def test_search_name_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'users.[]=1\nusers.0.id=1038690899\nTXN=SearchOwners\nusers.0.name=Sam70786\n'
+            b'nameSpaceId=XBL_SUB\nusers.0.type=1'
+        )
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        namespace_id = payload.get_str('nameSpaceId')
+        users = payload.get_list('users')
+
+        # THEN
+        self.assertEqual('SearchOwners', txn)
+        self.assertEqual('XBL_SUB', namespace_id)
+        self.assertEqual([
+            {'id': b'1038690899', 'name': b'Sam70786', 'type': b'1'}
+        ], users)
+
+    def test_stats_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'stats.1.key=losses\nstats.[]=3\nstats.2.value=16455.0\nTXN=GetStats\nstats.1.value=12006.0\n'
+            b'stats.2.key=wins\nstats.0.value=28461.0\nstats.0.key=games'
+        )
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        stats = payload.get_list('stats')
+
+        # THEN
+        self.assertEqual('GetStats', txn)
+        self.assertEqual([
+            {'key': b'games', 'value': b'28461.0'},
+            {'key': b'losses', 'value': b'12006.0'},
+            {'key': b'wins', 'value': b'16455.0'}
+        ], stats)
+
+    def test_get_dogtags_as_list_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'state=1\nvalues.5.value=bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA\nvalues.6.key=1055254420\nTTL=0\n'
+            b'values.3.value=TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA\nvalues.1.value=RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA\n'
+            b'values.6.value=RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA\nvalues.9.key=1055240877\n'
+            b'values.2.value=RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA\nvalues.[]=10\n'
+            b'values.8.value=TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A\nvalues.4.key=1048348626\n'
+            b'values.7.value=UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA\nvalues.9.value=RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA\n'
+            b'values.7.key=992138898\nlastModified="2023-09-22 19%3a42%3a57.0"\nvalues.0.key=1055242182\n'
+            b'values.5.key=1032604717\nvalues.1.key=1055257806\nvalues.3.key=1055257610\nvalues.2.key=939363578\n'
+            b'values.8.key=781949650\nTXN=GetRecord\nvalues.0.value=QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA\n'
+            b'values.4.value=UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'
+        )
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        ttl = payload.get_int('TTL')
+        state = payload.get_int('state')
+        last_modified = payload.get_str('lastModified')
+        values = payload.get_list('values')
+
+        # THEN
+        self.assertEqual('GetRecord', txn)
+        self.assertEqual(0, ttl)
+        self.assertEqual(1, state)
+        self.assertEqual('"2023-09-22 19%3a42%3a57.0"', last_modified)
+        self.assertEqual([
+            {'key': b'1055242182', 'value': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA'},
+            {'key': b'1055257806', 'value': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA'},
+            {'key': b'939363578', 'value': b'RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA'},
+            {'key': b'1055257610', 'value': b'TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA'},
+            {'key': b'1048348626', 'value': b'UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'},
+            {'key': b'1032604717', 'value': b'bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA'},
+            {'key': b'1055254420', 'value': b'RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA'},
+            {'key': b'992138898', 'value': b'UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA'},
+            {'key': b'781949650', 'value': b'TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A'},
+            {'key': b'1055240877', 'value': b'RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA'}
+        ], values)
+
+    def test_leaderboard_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'stats.4.addStats.2.value=1.1630278E7\nstats.2.owner=959040406\nstats.4.addStats.1.key=kills\n'
+            b'stats.0.addStats.1.key=kills\nstats.4.addStats.0.value=151531.0\nstats.2.addStats.2.key=score\n'
+            b'stats.0.value=2.4056603E7\nstats.0.addStats.[]=4\nstats.1.addStats.0.value=292627.0\n'
+            b'stats.0.addStats.0.value=988609.0\nstats.2.rank=3\nstats.0.addStats.3.value=6.6336188019E7\n'
+            b'stats.1.rank=2\nstats.4.name="K5Q Blan"\nstats.2.addStats.1.key=kills\nstats.3.addStats.1.key=kills\n'
+            b'stats.2.name="o lNiiNJA"\nstats.3.owner=925212106\nstats.4.rank=5\nstats.4.addStats.[]=4\n'
+            b'stats.2.addStats.3.key=time\nstats.3.addStats.3.key=time\nstats.0.rank=1\nstats.0.addStats.2.key=score\n'
+            b'stats.3.addStats.2.key=score\nstats.2.addStats.0.value=127087.0\nstats.4.addStats.3.key=time\n'
+            b'TXN=GetTopNAndStats\nstats.1.addStats.[]=4\nstats.3.addStats.3.value=2.5479985997E7\n'
+            b'stats.4.value=1.1630278E7\nstats.2.addStats.0.key=deaths\nstats.3.addStats.2.value=1.2270119E7\n'
+            b'stats.3.value=1.2270119E7\nstats.4.addStats.3.value=2.2121341986E7\nstats.1.addStats.3.key=time\n'
+            b'stats.3.addStats.0.value=180779.0\nstats.1.owner=853198764\nstats.[]=5\nstats.1.value=1.553427E7\n'
+            b'stats.1.addStats.1.key=kills\nstats.2.addStats.1.value=636392.0\n'
+            b'stats.1.addStats.3.value=4.3991928017E7\nstats.0.owner=905760050\nstats.0.addStats.2.value=2.4056603E7\n'
+            b'stats.0.addStats.3.key=time\nstats.0.addStats.0.key=deaths\nstats.2.addStats.2.value=1.3002937E7\n'
+            b'stats.4.addStats.1.value=568653.0\nstats.2.value=1.3002937E7\nstats.1.addStats.0.key=deaths\n'
+            b'stats.3.addStats.0.key=deaths\nstats.3.name=Schmittepitter\nstats.0.addStats.1.value=1082418.0\n'
+            b'stats.2.addStats.[]=4\nstats.3.addStats.1.value=572390.0\nstats.1.name="BONE 815"\n'
+            b'stats.4.addStats.0.key=deaths\nstats.3.rank=4\nstats.1.addStats.2.key=score\nstats.0.name=daddyo21252\n'
+            b'stats.4.addStats.2.key=score\nstats.3.addStats.[]=4\nstats.1.addStats.1.value=738204.0\n'
+            b'stats.2.addStats.3.value=2.1566129983E7\nstats.4.owner=987817822\nstats.1.addStats.2.value=1.553427E7'
+        )
+
+        # WHEN
+        txn = payload.get('TXN')
+        stats = payload.get_list('stats')
+
+        # THEN
+        self.assertEqual(b'GetTopNAndStats', txn)
+        self.assertEqual([
+            {
+                'owner': b'905760050',
+                'name': b'daddyo21252',
+                'rank': b'1',
+                'value': b'2.4056603E7',
+                'addStats': [
+                    {'key': b'deaths', 'value': b'988609.0'},
+                    {'key': b'kills', 'value': b'1082418.0'},
+                    {'key': b'score', 'value': b'2.4056603E7'},
+                    {'key': b'time', 'value': b'6.6336188019E7'},
+                ]
+            },
+            {
+                'owner': b'853198764',
+                'name': b'"BONE 815"',
+                'rank': b'2',
+                'value': b'1.553427E7',
+                'addStats': [
+                    {'key': b'deaths', 'value': b'292627.0'},
+                    {'key': b'kills', 'value': b'738204.0'},
+                    {'key': b'score', 'value': b'1.553427E7'},
+                    {'key': b'time', 'value': b'4.3991928017E7'},
+                ]
+            },
+            {
+                'owner': b'959040406',
+                'name': b'"o lNiiNJA"',
+                'rank': b'3',
+                'value': b'1.3002937E7',
+                'addStats': [
+                    {'key': b'deaths', 'value': b'127087.0'},
+                    {'key': b'kills', 'value': b'636392.0'},
+                    {'key': b'score', 'value': b'1.3002937E7'},
+                    {'key': b'time', 'value': b'2.1566129983E7'},
+                ]
+            },
+            {
+                'owner': b'925212106',
+                'name': b'Schmittepitter',
+                'rank': b'4',
+                'value': b'1.2270119E7',
+                'addStats': [
+                    {'key': b'deaths', 'value': b'180779.0'},
+                    {'key': b'kills', 'value': b'572390.0'},
+                    {'key': b'score', 'value': b'1.2270119E7'},
+                    {'key': b'time', 'value': b'2.5479985997E7'},
+                ]
+            },
+            {
+                'owner': b'987817822',
+                'name': b'"K5Q Blan"',
+                'rank': b'5',
+                'value': b'1.1630278E7',
+                'addStats': [
+                    {'key': b'deaths', 'value': b'151531.0'},
+                    {'key': b'kills', 'value': b'568653.0'},
+                    {'key': b'score', 'value': b'1.1630278E7'},
+                    {'key': b'time', 'value': b'2.2121341986E7'},
+                ]
+            }
+        ], stats)
+
+    def test_conn_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'TIME=1700680166\nTID=1\nactivityTimeoutSecs=240\nPROT=2')
+
+        # WHEN
+        time = payload.get_int('TIME')
+        tid = payload.get_int('TID')
+        ats = payload.get_int('activityTimeoutSecs')
+        prot = payload.get_int('PROT')
+
+        # THEN
+        self.assertEqual(1700680166, time)
+        self.assertEqual(1, tid)
+        self.assertEqual(240, ats)
+        self.assertEqual(2, prot)
+
+    def test_gdat_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'JP=2\nB-U-location=nrt\nHN=beach.server.p\nB-U-level=levels/wake_island_s\nN=nrtps3313604\n'
+            b'I=109.200.221.166\nJ=O\nHU=201104017\nB-U-Time="T%3a20.02 S%3a 9.81 L%3a 0.00"\nV=1.0\n'
+            b'B-U-gamemode=CONQUEST\nP=26016\nB-U-trial=RETAIL\nB-U-balance=NORMAL\n'
+            b'B-U-hash=8FF089DA-0DE7-0470-EF0F-0D4C905B7DC5\nB-numObservers=0\nTYPE=G\nLID=257\n'
+            b'B-U-Frames="T%3a 300 B%3a 1"\nB-version=RETAIL421378\nQP=0\nMP=24\nB-U-type=RANKED\nB-U-playgroup=YES\n'
+            b'B-U-public=NO\nGID=838009\nPL=PC\nB-U-elo=1000\nB-maxObservers=0\nPW=0\nTID=19\nB-U-coralsea=NO\nAP=0'
+        )
+
+        # WHEN/THEN
+        self.assertEqual(2, payload.get_int('JP'))
+        self.assertEqual('nrt', payload.get_str('B-U-location'))
+        self.assertEqual('beach.server.p', payload.get_str('HN'))
+        self.assertEqual('levels/wake_island_s', payload.get_str('B-U-level'))
+        self.assertEqual('nrtps3313604', payload.get_str('N'))
+        self.assertEqual('109.200.221.166', payload.get_str('I'))
+        self.assertEqual('O', payload.get_str('J'))
+        self.assertEqual(201104017, payload.get_int('HU'))
+        self.assertEqual('"T%3a20.02 S%3a 9.81 L%3a 0.00"', payload.get_str('B-U-Time'))
+        self.assertEqual('1.0', payload.get_str('V'))
+        self.assertEqual('CONQUEST', payload.get_str('B-U-gamemode'))
+        self.assertEqual(26016, payload.get_int('P'))
+        self.assertEqual('RETAIL', payload.get_str('B-U-trial'))
+        self.assertEqual('NORMAL', payload.get_str('B-U-balance'))
+        self.assertEqual('8FF089DA-0DE7-0470-EF0F-0D4C905B7DC5', payload.get_str('B-U-hash'))
+        self.assertEqual(0, payload.get_int('B-numObservers'))
+        self.assertEqual('G', payload.get_str('TYPE'))
+        self.assertEqual(257, payload.get_int('LID'))
+        self.assertEqual('"T%3a 300 B%3a 1"', payload.get_str('B-U-Frames'))
+        self.assertEqual('RETAIL421378', payload.get_str('B-version'))
+        self.assertEqual(0, payload.get_int('QP'))
+        self.assertEqual(24, payload.get_int('MP'))
+        self.assertEqual('RANKED', payload.get_str('B-U-type'))
+        self.assertEqual('YES', payload.get_str('B-U-playgroup'))
+        self.assertEqual('NO', payload.get_str('B-U-public'))
+        self.assertEqual(838009, payload.get_int('GID'))
+        self.assertEqual('PC', payload.get_str('PL'))
+        self.assertEqual(1000, payload.get_int('B-U-elo'))
+        self.assertEqual(0, payload.get_int('B-maxObservers'))
+        self.assertEqual(0, payload.get_int('PW'))
+        self.assertEqual(19, payload.get_int('TID'))
+        self.assertEqual('NO', payload.get_str('B-U-coralsea'))
+        self.assertEqual(0, payload.get_int('AP'))
