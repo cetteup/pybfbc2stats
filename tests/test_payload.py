@@ -58,6 +58,52 @@ class PayloadTest(unittest.TestCase):
         # THEN
         self.assertEqual(20, length)
 
+    def test_eq(self):
+        # GIVEN
+        one = Payload(TXN=b'MemCheck', result=b'')
+        two = Payload(TXN=b'MemCheck', result=b'')
+        three = Payload(TXN=b'Ping')
+        other = dict()
+
+        # WHEN/THEN
+        self.assertTrue(one == one)
+        self.assertTrue(one == two)
+        self.assertFalse(one == three)
+        self.assertFalse(one == other)
+        self.assertTrue(two == two)
+        self.assertFalse(two == three)
+        self.assertFalse(two == other)
+        self.assertTrue(three == three)
+        self.assertFalse(three == other)
+
+    def test_add(self):
+        # GIVEN
+        one = Payload(unchanged='unchanged', change='original')
+        two = Payload(change='updated', added='added')
+
+        # WHEN
+        payload = one + two
+
+        # THEN
+        self.assertEqual(b'unchanged', payload.data.get('unchanged'))
+        self.assertEqual(b'updated', payload.data.get('change'))
+        self.assertEqual(b'added', payload.data.get('added'))
+        self.assertEqual(3, len(payload.data))
+
+    def test_iadd(self):
+        # GIVEN
+        one = Payload(unchanged='unchanged', change='original')
+        two = Payload(change='updated', added='added')
+
+        # WHEN
+        one += two
+
+        # THEN
+        self.assertEqual(b'unchanged', one.data.get('unchanged'))
+        self.assertEqual(b'updated', one.data.get('change'))
+        self.assertEqual(b'added', one.data.get('added'))
+        self.assertEqual(3, len(one.data))
+
     def test_update(self):
         # GIVEN
         payload = Payload(unchanged='unchanged', change='original')

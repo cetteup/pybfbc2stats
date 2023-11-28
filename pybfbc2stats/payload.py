@@ -38,6 +38,25 @@ class Payload:
     def __len__(self):
         return len(bytes(self))
 
+    def __eq__(self, other):
+        return isinstance(other, Payload) and other.data == self.data
+
+    def __add__(self, other):
+        if not isinstance(other, Payload):
+            raise ParameterError(f'Cannot add {type(other)} to Payload')
+
+        payload = Payload(**self.data)
+        payload.update(**other.data)
+
+        return payload
+
+    def __iadd__(self, other):
+        if not isinstance(other, Payload):
+            raise ParameterError(f'Cannot add {type(other)} to Payload')
+
+        self.data.update(**other.data)
+        return self
+
     def update(self, **kwargs: Union[PayloadValue, PayloadStruct]) -> None:
         for key, value in kwargs.items():
             self.set(key, value)
@@ -123,7 +142,7 @@ class Payload:
     def get_struct(self, path: str) -> ParsedPayloadStruct:
         keys = self.destruct_path(path)
         groups = self.group_by_path(self.data, path)
-        values = {}
+        values = dict()
         for group_path, group in groups.items():
             group_keys = self.destruct_path(group_path)
             if len(group_keys) == 1 and group_keys[0] == path:
@@ -212,7 +231,7 @@ class Payload:
         if len(struct) != length + 1:
             raise Error('Inconsistent payload map (length mismatch)')
 
-        values = {}
+        values = dict()
         for key, value in struct.items():
             if key != StructLengthIndicator.map:
                 # Remove '{}' from key, turning '{1032604717}' into '1032604717
