@@ -367,6 +367,104 @@ class PayloadTest(unittest.TestCase):
         # WHEN/THEN
         self.assertRaises(Error, payload.get_list, 'dict')
 
+    def test_get_map(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'map.{bytes}=bytes\nmap.{str}=str\n'
+            b'map.{int}=1\nmap.{float}=1.0\nmap.none=\n'
+            b'map.{}=5'
+        )
+
+        # WHEN
+        existing = payload.get_map('map')
+        default = payload.get_map('missing', {})
+        missing = payload.get_map('missing')
+
+        # THEN
+        self.assertEqual({
+            'bytes': b'bytes',
+            'str': b'str',
+            'int': b'1',
+            'float': b'1.0',
+            'none': b''
+        }, existing)
+        self.assertEqual({}, default)
+        self.assertIsNone(missing)
+
+    def test_get_map_nested(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'map.{key}.{bytes}=bytes\nmap.{key}.{str}=str\n'
+            b'map.{key}.{int}=1\nmap.{key}.{float}=1.0\nmap.{key}.none=\n'
+            b'map.{key}.{}=5\n'
+            b'map.{}=1'
+        )
+
+        # WHEN
+        actual = payload.get_map('map')
+
+        # THEN
+        self.assertEqual({
+            'key': {
+                'bytes': b'bytes',
+                'str': b'str',
+                'int': b'1',
+                'float': b'1.0',
+                'none': b''
+            }
+        }, actual)
+
+    def test_get_map_list(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'map.{key}.0=bytes\nmap.{key}.1=str\n'
+            b'map.{key}.2=1\nmap.{key}.3=1.0\nmap.{key}.4=\n'
+            b'map.{key}.[]=5\n'
+            b'map.{other-key}.0=other-bytes\nmap.{other-key}.1=other-str\n'
+            b'map.{other-key}.2=2\nmap.{other-key}.3=2.0\nmap.{other-key}.4=\n'
+            b'map.{other-key}.[]=5\n'
+            b'map.{}=2'
+        )
+
+        # WHEN
+        actual = payload.get_map('map')
+
+        # THEN
+        self.assertEqual({
+            'key': [b'bytes', b'str', b'1', b'1.0', b''],
+            'other-key': [b'other-bytes', b'other-str', b'2', b'2.0', b'']
+        }, actual)
+
+    def test_get_map_missing_length_indicator(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'map.{key}=value')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_map, 'map')
+
+    def test_get_map_missing_key(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'map.{}=1')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_map, 'map')
+
+    def test_get_map_not_a_struct(self):
+        # GIVEN
+        payload = Payload(key=b'value')
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_map, 'key')
+
+    def test_get_list_not_a_map(self):
+        # GIVEN
+        payload = Payload(dict={
+            'key': b'value'
+        })
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_map, 'dict')
+
     def test_get_dict(self):
         # GIVEN
         payload = Payload(dict={
@@ -509,7 +607,47 @@ class PayloadTest(unittest.TestCase):
             {'key': b'wins', 'value': b'16455.0'}
         ], stats)
 
-    def test_get_dogtags_as_list_response(self):
+    def test_dogtags_as_map_response(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'values.{992138898}=UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA\nlastModified="2023-09-22 19%3a42%3a57.0"\n'
+            b'state=1\nvalues.{1055242182}=QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA\n'
+            b'values.{1032604717}=bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA\n'
+            b'values.{939363578}=RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA\nTTL=0\nvalues.{}=10\n'
+            b'values.{1055240877}=RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA\n'
+            b'values.{1055254420}=RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA\n'
+            b'values.{1055257806}=RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA\n'
+            b'values.{1055257610}=TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA\n'
+            b'TXN=GetRecordAsMap\nvalues.{781949650}=TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A\n'
+            b'values.{1048348626}=UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'
+        )
+
+        # WHEN
+        txn = payload.get_str('TXN')
+        ttl = payload.get_int('TTL')
+        state = payload.get_int('state')
+        last_modified = payload.get_str('lastModified')
+        values = payload.get_map('values')
+
+        # THEN
+        self.assertEqual('GetRecordAsMap', txn)
+        self.assertEqual(0, ttl)
+        self.assertEqual(1, state)
+        self.assertEqual('"2023-09-22 19%3a42%3a57.0"', last_modified)
+        self.assertEqual({
+            '1055242182': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA',
+            '1055257806': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA',
+            '939363578': b'RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA',
+            '1055257610': b'TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA',
+            '1048348626': b'UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA',
+            '1032604717': b'bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA',
+            '1055254420': b'RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA',
+            '992138898': b'UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA',
+            '781949650': b'TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A',
+            '1055240877': b'RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA'
+        }, values)
+
+    def test_dogtags_as_list_response(self):
         # GIVEN
         payload = Payload.from_bytes(
             b'state=1\nvalues.5.value=bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA\nvalues.6.key=1055254420\nTTL=0\n'

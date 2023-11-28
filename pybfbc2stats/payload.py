@@ -106,6 +106,13 @@ class Payload:
         as_struct = self.get_struct(key)
         return self.struct_to_list(as_struct)
 
+    def get_map(self, key: str, default: Optional[ParsedPayloadStruct] = None) -> Optional[ParsedPayloadStruct]:
+        if not self.has_values_at_path(self.data, key):
+            return default
+
+        as_struct = self.get_struct(key)
+        return self.struct_to_map(as_struct)
+
     def get_dict(self, key: str, default: Optional[ParsedPayloadStruct] = None) -> Optional[ParsedPayloadStruct]:
         if not self.has_values_at_path(self.data, key):
             return default
@@ -128,14 +135,16 @@ class Payload:
             """
             target_key = self.build_path(*tuple(group_keys[len(keys):]))
             if len(group) > 1:
-                # List entry is a nested struct => recurse, add all
+                # Item is a nested struct => recurse, add all (converting as needed)
                 struct = self.get_struct(group_path)
                 if StructLengthIndicator.list in struct:
                     values[target_key] = self.struct_to_list(struct)
+                elif StructLengthIndicator.map in struct:
+                    values[target_key] = self.struct_to_map(struct)
                 else:
                     values[target_key] = struct
             elif len(group) == 1:
-                # Only one entry under list index path => scalar list, add value directly
+                # Only one item under path => scalar list, add value directly
                 values[target_key] = list(group.values()).pop()
             else:
                 # An empty group should not be possible, so this error should never be raised
@@ -177,8 +186,8 @@ class Payload:
 
 
     @staticmethod
-    def struct_to_list(struct: ParsedPayloadStruct) -> list:
-        length = Payload.get_list_length(struct)
+    def struct_to_list(struct: ParsedPayloadStruct) -> List[Union[bytes, ParsedPayloadStruct]]:
+        length = Payload.get_struct_length(struct, StructLengthIndicator.list)
         if length == -1:
             raise ParameterError('Cannot convert non-list-struct to list')
 
@@ -186,15 +195,33 @@ class Payload:
         for index in range(length):
             value = struct.get(str(index))
             if value is None:
-                raise Error('Incomplete payload list')
+                raise Error('Inconsistent payload list (missing index)')
 
             values.append(value)
 
         return values
 
     @staticmethod
-    def get_list_length(data: Union[PayloadData, ParsedPayloadStruct]) -> int:
-        return int(data.get(StructLengthIndicator.list, b'-1').decode(ENCODING))
+    def struct_to_map(struct: ParsedPayloadStruct) -> ParsedPayloadStruct:
+        length = Payload.get_struct_length(struct, StructLengthIndicator.map)
+        if length == -1:
+            raise ParameterError('Cannot convert non-map-struct to map')
+
+        # Struct should contain the specified number of items plus the length indicator
+        if len(struct) != length + 1:
+            raise Error('Inconsistent payload map (length mismatch)')
+
+        values = {}
+        for key, value in struct.items():
+            if key != StructLengthIndicator.map:
+                # Remove '{}' from key, turning '{1032604717}' into '1032604717
+                values[key.strip(StructLengthIndicator.map)] = value
+
+        return values
+
+    @staticmethod
+    def get_struct_length(data: Union[PayloadData, ParsedPayloadStruct], indicator: Union[StructLengthIndicator, str]) -> int:
+        return int(data.get(indicator, b'-1').decode(ENCODING))
 
     @staticmethod
     def build_path(*args: Union[str, int]) -> str:
