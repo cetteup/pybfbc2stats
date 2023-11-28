@@ -14,13 +14,9 @@ ParsedPayloadStruct = Dict[str, Union[bytes, List[Union[bytes, 'ParsedPayloadStr
 class Payload:
     data: PayloadData
 
-    def __init__(self, *args: Union[PayloadValue, PayloadStruct], **kwargs: Union[PayloadValue, PayloadStruct]):
+    def __init__(self, **kwargs: Union[PayloadValue, PayloadStruct]):
         self.data = dict()
-        if len(args) > 0:
-            self.set(StructLengthIndicator.list, 0)
-            self.extend(*args)
-        else:
-            self.update(**kwargs)
+        self.update(**kwargs)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> 'Payload':
@@ -42,23 +38,8 @@ class Payload:
         return len(bytes(self))
 
     def update(self, **kwargs: Union[PayloadValue, PayloadStruct]) -> None:
-        if self.is_list(self.data):
-            raise ParameterError('Cannot set key values on list payload')
-
         for key, value in kwargs.items():
             self.set(key, value)
-
-    def extend(self, *args) -> None:
-        length = self.get_list_length(self.data)
-        if length == -1:
-            raise ParameterError('Cannot set index values on non-list payload')
-
-        # Remove existing length indicator because it would mess with indexes
-        self.remove(StructLengthIndicator.list)
-
-        for index, value in enumerate(args):
-            self.set(str(length + index), value)
-        self.set(StructLengthIndicator.list, length + len(args))
 
     def set(self, key: str, value: Union[PayloadValue, PayloadStruct], *args: Union[str, int]) -> None:
         path = self.build_path(*args, key)
@@ -140,6 +121,11 @@ class Payload:
             if len(group_keys) == 1 and group_keys[0] == path:
                 raise Error(f'Payload value at {path} is not a struct')
 
+            """
+            The key of struct itself should not part of the keys in the struct. Meaning for a struct containing 
+            b'userInfo.0.namespace=PS3_SUB', the parsed struct should be {'0': {'namespace': b'PS3_SUB'}}. Thus, 
+            the first path element (the struct key, b'userInfo')) needs to dropped.
+            """
             target_key = self.build_path(*tuple(group_keys[len(keys):]))
             if len(group) > 1:
                 # List entry is a nested struct => recurse, add all
@@ -175,6 +161,8 @@ class Payload:
         groups = dict()
         for item_path, item_value in items.items():
             item_keys = Payload.destruct_path(item_path)
+            # Group path should be the struct path plus the next path element
+            # e.g. for userInfo.0.namespace=PS3_SUB, all values under userInfo.0 should be grouped together
             group_path = Payload.build_path(*tuple(item_keys[:len(keys) + 1]))
             if group_path not in groups:
                 groups[group_path] = dict()
@@ -207,10 +195,6 @@ class Payload:
     @staticmethod
     def get_list_length(data: Union[PayloadData, ParsedPayloadStruct]) -> int:
         return int(data.get(StructLengthIndicator.list, b'-1').decode(ENCODING))
-
-    @staticmethod
-    def is_list(data: Union[PayloadData, ParsedPayloadStruct]) -> bool:
-        return Payload.get_list_length(data) != -1
 
     @staticmethod
     def build_path(*args: Union[str, int]) -> str:
