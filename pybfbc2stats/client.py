@@ -9,7 +9,7 @@ from .constants import STATS_KEYS, DEFAULT_BUFFER_SIZE, FeslStep, Namespace, Pla
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
     EPOCH_START
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
-    SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError
+    SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
 
 
@@ -116,7 +116,10 @@ class FeslClient(Client):
         self.password = password.encode('utf8')
 
     def __exit__(self, *excinfo):
-        self.logout()
+        try:
+            self.logout()
+        except (ConnectionError, TimeoutError):
+            pass
         self.connection.close()
 
     def hello(self) -> bytes:

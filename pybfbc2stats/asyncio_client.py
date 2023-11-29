@@ -4,7 +4,7 @@ from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
     TheaterStep
-from .exceptions import PlayerNotFoundError, AuthError
+from .exceptions import PlayerNotFoundError, AuthError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
 
 
@@ -77,7 +77,10 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         return self
 
     async def __aexit__(self, *excinfo):
-        await self.logout()
+        try:
+            await self.logout()
+        except (ConnectionError, TimeoutError):
+            pass
         await self.connection.close()
 
     async def hello(self) -> bytes:

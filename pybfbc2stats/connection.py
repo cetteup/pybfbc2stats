@@ -145,15 +145,18 @@ class Connection:
     def __del__(self):
         self.close()
 
-    def close(self) -> bool:
+    def close(self) -> None:
         if hasattr(self, 'sock') and isinstance(self.sock, socket.socket):
             if self.is_connected:
-                self.sock.shutdown(socket.SHUT_RDWR)
+                self.shutdown()
             self.sock.close()
             self.is_connected = False
-            return True
 
-        return False
+    def shutdown(self) -> None:
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
 
 class SecureConnection(Connection):
@@ -177,12 +180,9 @@ class SecureConnection(Connection):
 
         return context
 
-    def close(self) -> bool:
+    def close(self) -> None:
         if hasattr(self, 'sock') and isinstance(self.sock, ssl.SSLSocket):
             if self.is_connected:
-                self.sock.shutdown(socket.SHUT_RDWR)
+                self.shutdown()
             self.sock.close()
             self.is_connected = False
-            return True
-
-        return False

@@ -113,18 +113,18 @@ class AsyncConnection(Connection):
     def __del__(self):
         pass
 
-    async def close(self) -> bool:
+    async def close(self) -> None:
         if hasattr(self, 'writer') and isinstance(self.writer, asyncio.StreamWriter):
             # We want to close the connection anyway, so catch and ignore any ConnectionResetError
             try:
                 self.writer.close()
                 await self.writer.wait_closed()
-            except ConnectionResetError:
+            except (ConnectionResetError, BrokenPipeError):
                 pass
             self.is_connected = False
-            return True
 
-        return False
+    def shutdown(self) -> None:
+        pass
 
 
 class AsyncSecureConnection(AsyncConnection):
