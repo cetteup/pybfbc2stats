@@ -1,7 +1,7 @@
 import unittest
 
 from pybfbc2stats import Error, ParameterError
-from pybfbc2stats.payload import Payload
+from pybfbc2stats.payload import Payload, MagicParseKey
 
 
 class PayloadTest(unittest.TestCase):
@@ -90,6 +90,13 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'added', payload.data.get('added'))
         self.assertEqual(3, len(payload.data))
 
+    def test_add_type_mismatch(self):
+        # GIVEN
+        payload = Payload(TXN=b'MemCheck', result=b'')
+
+        # WHEN/THEN
+        self.assertRaises(ParameterError, lambda: payload + dict())
+
     def test_iadd(self):
         # GIVEN
         one = Payload(unchanged='unchanged', change='original')
@@ -103,6 +110,13 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(b'updated', one.data.get('change'))
         self.assertEqual(b'added', one.data.get('added'))
         self.assertEqual(3, len(one.data))
+
+    def test_iadd_type_mismatch(self):
+        # GIVEN
+        payload = Payload(TXN=b'MemCheck', result=b'')
+
+        # WHEN/THEN (have to call __iadd__ directly here, as using lambda does not work)
+        self.assertRaises(ParameterError, payload.__iadd__, dict())
 
     def test_update(self):
         # GIVEN
@@ -383,6 +397,55 @@ class PayloadTest(unittest.TestCase):
             }
         ], actual)
 
+    def test_get_list_parsed(self):
+        # GIVEN
+        payload = Payload(
+            str=['"quoted value"', 'encoded%20value', '"quoted%20and%20encoded%20value"'],
+            int=[1, -1],
+            float=[1.0, -1.0, 3.22E7, 3.22E-7],
+            nested=[[1, 2, 3, 4, 5]],
+            dict=[{
+                'bytes': b'bytes',
+                'str': 'str',
+                'int': 1,
+                'float': 1.0,
+                'none': None
+            }]
+        )
+
+        # WHEN
+        str_parsed = payload.get_list('str', parse_map={
+            MagicParseKey.index: str
+        })
+        int_parsed = payload.get_list('int', parse_map={
+            MagicParseKey.index: int
+        })
+        float_parsed = payload.get_list('float', parse_map={
+            MagicParseKey.index: float
+        })
+        nested_parsed = payload.get_list('nested', parse_map={
+            MagicParseKey.index: int
+        })
+        dict_parsed = payload.get_list('dict', parse_map={
+            'str': str,
+            'int': int,
+            'float': float,
+            'bytes': bytes  # Not supported/noop
+        })
+
+        # THEN
+        self.assertEqual(['quoted value', 'encoded value', 'quoted and encoded value'], str_parsed)
+        self.assertEqual([1, -1], int_parsed)
+        self.assertEqual([1.0, -1.0, 3.22E7, 3.22E-7], float_parsed)
+        self.assertEqual([[1, 2, 3, 4, 5]], nested_parsed)
+        self.assertEqual([{
+            'bytes': b'bytes',
+            'str': 'str',
+            'int': 1,
+            'float': 1.0,
+            'none': b''
+        }], dict_parsed)
+
     def test_get_list_missing_length_indicator(self):
         # GIVEN
         payload = Payload.from_bytes(b'list.0=value')
@@ -412,6 +475,19 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN/THEN
         self.assertRaises(Error, payload.get_list, 'dict')
+
+    def test_get_list_parse_error(self):
+        # GIVEN
+        payload = Payload(**{
+            'non-utf8-str': [b'\xac\x1d5\x08'],
+            'non-int': [b'value'],
+            'non-float': [b'value']
+        })
+
+        # WHEN/THEN
+        self.assertRaises(Error, payload.get_list, 'non-utf8-str', parse_map={MagicParseKey.index: str})
+        self.assertRaises(Error, payload.get_list, 'non-int', parse_map={MagicParseKey.index: int})
+        self.assertRaises(Error, payload.get_list, 'non-float', parse_map={MagicParseKey.index: float})
 
     def test_get_map(self):
         # GIVEN
@@ -480,6 +556,30 @@ class PayloadTest(unittest.TestCase):
             'key': [b'bytes', b'str', b'1', b'1.0', b''],
             'other-key': [b'other-bytes', b'other-str', b'2', b'2.0', b'']
         }, actual)
+
+    def test_get_map_parsed(self):
+        # GIVEN
+        payload = Payload.from_bytes(
+            b'map.{bytes}=bytes\nmap.{str}="a%20str"\n'
+            b'map.{int}=1\nmap.{float}=1.0\nmap.none=\n'
+            b'map.{}=5'
+        )
+
+        # WHEN
+        parsed = payload.get_map('map', parse_map={
+            'str': str,
+            'int': int,
+            'float': float
+        })
+
+        # THEN
+        self.assertEqual({
+            'bytes': b'bytes',
+            'str': 'a str',
+            'int': 1,
+            'float': 1.0,
+            'none': b''
+        }, parsed)
 
     def test_get_map_missing_length_indicator(self):
         # GIVEN
@@ -579,6 +679,32 @@ class PayloadTest(unittest.TestCase):
             'other-key': [b'other-bytes', b'other-str', b'2', b'2.0', b'']
         }, actual)
 
+    def test_get_dict_parsed(self):
+        # GIVEN
+        payload = Payload(dict={
+            'bytes': b'bytes',
+            'str': '"a%20str"',
+            'int': 1,
+            'float': 1.0,
+            'none': None
+        })
+
+        # WHEN
+        parsed = payload.get_dict('dict', parse_map={
+            'str': str,
+            'int': int,
+            'float': float
+        })
+
+        # THEN
+        self.assertEqual({
+            'bytes': b'bytes',
+            'str': 'a str',
+            'int': 1,
+            'float': 1.0,
+            'none': b''
+        }, parsed)
+
     def test_get_dict_not_a_struct(self):
         # GIVEN
         payload = Payload(key=b'value')
@@ -592,11 +718,13 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN
         txn = payload.get_str('TXN')
-        personas = payload.get_list('personas')
+        personas = payload.get_list('personas', parse_map={
+            MagicParseKey.index: str
+        })
 
         # THEN
         self.assertEqual('NuGetPersonas', txn)
-        self.assertEqual([b'yeas-yuwn-ep-lon'], personas)
+        self.assertEqual(['yeas-yuwn-ep-lon'], personas)
 
     def test_user_lookup_response(self):
         # GIVEN
@@ -607,12 +735,17 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN
         txn = payload.get_str('TXN')
-        users = payload.get_list('userInfo')
+        users = payload.get_list('userInfo', parse_map={
+            'namespace': str,
+            'userId': int,
+            'xuid': int,
+            'userName': str
+        })
 
         # THEN
         self.assertEqual('LookupUserInfo', txn)
         self.assertEqual([
-            {'namespace': b'PS3_SUB', 'userId': b'891451503', 'xuid': b'8030785869539906380', 'userName': b'sam707'}
+            {'namespace': 'PS3_SUB', 'userId': 891451503, 'xuid': 8030785869539906380, 'userName': 'sam707'}
         ], users)
 
     def test_search_name_response(self):
@@ -625,13 +758,17 @@ class PayloadTest(unittest.TestCase):
         # WHEN
         txn = payload.get_str('TXN')
         namespace_id = payload.get_str('nameSpaceId')
-        users = payload.get_list('users')
+        users = payload.get_list('users', parse_map={
+            'id': int,
+            'name': str,
+            'type': int
+        })
 
         # THEN
         self.assertEqual('SearchOwners', txn)
         self.assertEqual('XBL_SUB', namespace_id)
         self.assertEqual([
-            {'id': b'1038690899', 'name': b'Sam70786', 'type': b'1'}
+            {'id': 1038690899, 'name': 'Sam70786', 'type': 1}
         ], users)
 
     def test_stats_response(self):
@@ -643,14 +780,17 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN
         txn = payload.get_str('TXN')
-        stats = payload.get_list('stats')
+        stats = payload.get_list('stats', parse_map={
+            'key': str,
+            'value': float
+        })
 
         # THEN
         self.assertEqual('GetStats', txn)
         self.assertEqual([
-            {'key': b'games', 'value': b'28461.0'},
-            {'key': b'losses', 'value': b'12006.0'},
-            {'key': b'wins', 'value': b'16455.0'}
+            {'key': 'games', 'value': 28461.0},
+            {'key': 'losses', 'value': 12006.0},
+            {'key': 'wins', 'value': 16455.0}
         ], stats)
 
     def test_dogtags_as_map_response(self):
@@ -713,7 +853,9 @@ class PayloadTest(unittest.TestCase):
         ttl = payload.get_int('TTL')
         state = payload.get_int('state')
         last_modified = payload.get_str('lastModified')
-        values = payload.get_list('values')
+        values = payload.get_list('values', parse_map={
+            'key': int
+        })
 
         # THEN
         self.assertEqual('GetRecord', txn)
@@ -721,16 +863,16 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(1, state)
         self.assertEqual('2023-09-22 19:42:57.0', last_modified)
         self.assertEqual([
-            {'key': b'1055242182', 'value': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA'},
-            {'key': b'1055257806', 'value': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA'},
-            {'key': b'939363578', 'value': b'RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA'},
-            {'key': b'1055257610', 'value': b'TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA'},
-            {'key': b'1048348626', 'value': b'UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'},
-            {'key': b'1032604717', 'value': b'bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA'},
-            {'key': b'1055254420', 'value': b'RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA'},
-            {'key': b'992138898', 'value': b'UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA'},
-            {'key': b'781949650', 'value': b'TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A'},
-            {'key': b'1055240877', 'value': b'RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA'}
+            {'key': 1055242182, 'value': b'QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA'},
+            {'key': 1055257806, 'value': b'RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA'},
+            {'key': 939363578, 'value': b'RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA'},
+            {'key': 1055257610, 'value': b'TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA'},
+            {'key': 1048348626, 'value': b'UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'},
+            {'key': 1032604717, 'value': b'bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA'},
+            {'key': 1055254420, 'value': b'RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA'},
+            {'key': 992138898, 'value': b'UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA'},
+            {'key': 781949650, 'value': b'TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A'},
+            {'key': 1055240877, 'value': b'RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA'}
         ], values)
 
     def test_leaderboard_response(self):
@@ -761,69 +903,75 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN
         txn = payload.get('TXN')
-        stats = payload.get_list('stats')
+        stats = payload.get_list('stats', parse_map={
+            'owner': int,
+            'name': str,
+            'rank': int,
+            'value': float,
+            'key': str
+        })
 
         # THEN
         self.assertEqual(b'GetTopNAndStats', txn)
         self.assertEqual([
             {
-                'owner': b'905760050',
-                'name': b'daddyo21252',
-                'rank': b'1',
-                'value': b'2.4056603E7',
+                'owner': 905760050,
+                'name': 'daddyo21252',
+                'rank': 1,
+                'value': 2.4056603E7,
                 'addStats': [
-                    {'key': b'deaths', 'value': b'988609.0'},
-                    {'key': b'kills', 'value': b'1082418.0'},
-                    {'key': b'score', 'value': b'2.4056603E7'},
-                    {'key': b'time', 'value': b'6.6336188019E7'},
+                    {'key': 'deaths', 'value': 988609.0},
+                    {'key': 'kills', 'value': 1082418.0},
+                    {'key': 'score', 'value': 2.4056603E7},
+                    {'key': 'time', 'value': 6.6336188019E7},
                 ]
             },
             {
-                'owner': b'853198764',
-                'name': b'"BONE 815"',
-                'rank': b'2',
-                'value': b'1.553427E7',
+                'owner': 853198764,
+                'name': 'BONE 815',
+                'rank': 2,
+                'value': 1.553427E7,
                 'addStats': [
-                    {'key': b'deaths', 'value': b'292627.0'},
-                    {'key': b'kills', 'value': b'738204.0'},
-                    {'key': b'score', 'value': b'1.553427E7'},
-                    {'key': b'time', 'value': b'4.3991928017E7'},
+                    {'key': 'deaths', 'value': 292627.0},
+                    {'key': 'kills', 'value': 738204.0},
+                    {'key': 'score', 'value': 1.553427E7},
+                    {'key': 'time', 'value': 4.3991928017E7},
                 ]
             },
             {
-                'owner': b'959040406',
-                'name': b'"o lNiiNJA"',
-                'rank': b'3',
-                'value': b'1.3002937E7',
+                'owner': 959040406,
+                'name': 'o lNiiNJA',
+                'rank': 3,
+                'value': 1.3002937E7,
                 'addStats': [
-                    {'key': b'deaths', 'value': b'127087.0'},
-                    {'key': b'kills', 'value': b'636392.0'},
-                    {'key': b'score', 'value': b'1.3002937E7'},
-                    {'key': b'time', 'value': b'2.1566129983E7'},
+                    {'key': 'deaths', 'value': 127087.0},
+                    {'key': 'kills', 'value': 636392.0},
+                    {'key': 'score', 'value': 1.3002937E7},
+                    {'key': 'time', 'value': 2.1566129983E7},
                 ]
             },
             {
-                'owner': b'925212106',
-                'name': b'Schmittepitter',
-                'rank': b'4',
-                'value': b'1.2270119E7',
+                'owner': 925212106,
+                'name': 'Schmittepitter',
+                'rank': 4,
+                'value': 1.2270119E7,
                 'addStats': [
-                    {'key': b'deaths', 'value': b'180779.0'},
-                    {'key': b'kills', 'value': b'572390.0'},
-                    {'key': b'score', 'value': b'1.2270119E7'},
-                    {'key': b'time', 'value': b'2.5479985997E7'},
+                    {'key': 'deaths', 'value': 180779.0},
+                    {'key': 'kills', 'value': 572390.0},
+                    {'key': 'score', 'value': 1.2270119E7},
+                    {'key': 'time', 'value': 2.5479985997E7},
                 ]
             },
             {
-                'owner': b'987817822',
-                'name': b'"K5Q Blan"',
-                'rank': b'5',
-                'value': b'1.1630278E7',
+                'owner': 987817822,
+                'name': 'K5Q Blan',
+                'rank': 5,
+                'value': 1.1630278E7,
                 'addStats': [
-                    {'key': b'deaths', 'value': b'151531.0'},
-                    {'key': b'kills', 'value': b'568653.0'},
-                    {'key': b'score', 'value': b'1.1630278E7'},
-                    {'key': b'time', 'value': b'2.2121341986E7'},
+                    {'key': 'deaths', 'value': 151531.0},
+                    {'key': 'kills', 'value': 568653.0},
+                    {'key': 'score', 'value': 1.1630278E7},
+                    {'key': 'time', 'value': 2.2121341986E7},
                 ]
             }
         ], stats)
