@@ -434,7 +434,7 @@ class FeslClient(Client):
             screenName=screen_name,
             searchType=1,
             retrieveUserIds=0,
-            nameSpaceId=bytes(Namespace)
+            nameSpaceId=bytes(namespace)
         )
         # Use SearchOwners instead of NuSearchOwners for legacy namespaces
         if Namespace.is_legacy_namespace(namespace):
