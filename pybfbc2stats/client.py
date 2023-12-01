@@ -8,7 +8,7 @@ from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, FRAGMENT_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
-    EPOCH_START, ENCODING, FeslParseMap
+    EPOCH_START, ENCODING, FeslParseMap, TheaterParseMap
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
@@ -824,8 +824,8 @@ class TheaterClient(Client):
         lobbies = []
         for i in range(num_lobbies):
             ldat_response = self.wrapped_read(tid)
-            ldat = self.parse_simple_response(ldat_response)
-            lobbies.append(ldat)
+            ldat = ldat_response.get_payload(TheaterParseMap.FallbackOnly)
+            lobbies.append(dict(ldat))
 
         return lobbies
 
@@ -860,8 +860,8 @@ class TheaterClient(Client):
         servers = []
         for i in range(num_games):
             gdat_response = self.wrapped_read(tid)
-            gdat = self.parse_simple_response(gdat_response)
-            servers.append(gdat)
+            gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            servers.append(dict(gdat))
 
         return servers
 
@@ -908,20 +908,20 @@ class TheaterClient(Client):
         is_error, error = self.is_error_response(gdat_response)
         if is_error:
             raise error
-        gdat = self.parse_simple_response(gdat_response)
+        gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
         gdet_response = self.wrapped_read(tid)
-        gdet = self.parse_simple_response(gdet_response)
+        gdet = gdet_response.get_payload(TheaterParseMap.FallbackOnly)
 
         # Determine number of active players (AP)
-        num_players = int(gdat.get('AP', int()))
+        num_players = gdat.get_int('AP', int())
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
             pdat_response = self.wrapped_read(tid)
-            pdat = self.parse_simple_response(pdat_response)
-            players.append(pdat)
+            pdat = pdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            players.append(dict(pdat))
 
-        return gdat, gdet, players
+        return dict(gdat), dict(gdet), players
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         if packet.header.startswith(b'PING'):

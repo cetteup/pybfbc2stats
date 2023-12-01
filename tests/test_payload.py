@@ -1,8 +1,9 @@
 import unittest
 from typing import List
 
-from pybfbc2stats import Error, ParameterError
-from pybfbc2stats.payload import Payload, MagicParseKey
+from pybfbc2stats import Error
+from pybfbc2stats.constants import MagicParseKey
+from pybfbc2stats.payload import Payload
 
 
 def join_data(lines: List[bytes]) -> bytes:
@@ -40,6 +41,43 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         expected = Payload(TXN=b'MemCheck', result=b'')
+        self.assertEqual(expected, actual)
+
+    def test_from_bytes_parsed(self):
+        # GIVEN
+        data = join_data([
+            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'none='
+        ])
+        parse_map = {
+            'str': str,
+            'int': int,
+            'float': float
+        }
+
+        # WHEN
+        actual = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        expected = Payload(bytes=b'"some%20bytes"', str='a str', int=1, float=1.0, none=b'')
+        self.assertEqual(expected, actual)
+
+    def test_from_bytes_parsed_with_fallback(self):
+        # GIVEN
+        data = join_data([
+            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'none='
+        ])
+        parse_map = {
+            'str': str,
+            'int': int,
+            'float': float,
+            MagicParseKey.fallback: str
+        }
+
+        # WHEN
+        actual = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        expected = Payload(bytes='some bytes', str='a str', int=1, float=1.0, none='')
         self.assertEqual(expected, actual)
 
     def test_from_bytes_list(self):
@@ -518,6 +556,28 @@ class PayloadTest(unittest.TestCase):
         # THEN
         self.assertFalse('existing' in payload.data)
         self.assertEqual('existing', popped)
+
+    def test_cast_to_dict(self):
+        # GIVEN
+        payload = Payload(
+            bytes=b'bytes',
+            str='str',
+            int=1,
+            float=1.0,
+            none=None
+        )
+
+        # WHEN
+        actual = dict(payload)
+
+        # THEN
+        self.assertEqual({
+            'bytes': b'bytes',
+            'str': 'str',
+            'int': 1,
+            'float': 1.0,
+            'none': None
+        }, actual)
 
     def test_set_overwrite_struct(self):
         # GIVEN

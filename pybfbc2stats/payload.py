@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Dict, Union, Optional, List, Callable, Type
 from urllib.parse import unquote
 
-from .constants import ENCODING
+from .constants import ENCODING, MagicParseKey
 from .exceptions import Error, ParameterError
 
 PayloadData = Dict[str, bytes]
@@ -24,13 +24,6 @@ class StructType(int, Enum):
 class StructLengthIndicator(str, Enum):
     list = '[]'
     map = '{}'
-
-    def __str__(self):
-        return self.value
-
-
-class MagicParseKey(str, Enum):
-    index = '_index_'
 
     def __str__(self):
         return self.value
@@ -95,6 +88,9 @@ class Payload:
 
     def pop(self, key: str) -> PayloadValue:
         return self.data.pop(key)
+
+    def keys(self) -> List[str]:
+        return list(self.data.keys())
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[Union[PayloadValue, PayloadStruct]]:
         return self.data.get(key, default)
@@ -217,7 +213,7 @@ class Payload:
 
     @staticmethod
     def parse_value(key: str, value: bytes, struct_type: StructType, parse_map: Optional[ParseMap]) -> PayloadValue:
-        map_key = Payload.get_parse_map_key(key, struct_type)
+        map_key = Payload.get_parse_map_key(key, struct_type, parse_map)
         if parse_map is None or map_key not in parse_map:
             return value
 
@@ -232,7 +228,7 @@ class Payload:
         return value
 
     @staticmethod
-    def get_parse_map_key(key: str, struct_type: StructType) -> str:
+    def get_parse_map_key(key: str, struct_type: StructType, parse_map: Optional[ParseMap]) -> str:
         # Scalar list keys are just the index, so allow a "magic key" to be specified to avoid
         # having to specify every index in the parse map (which would be impractical at best)
         if struct_type is StructType.list and key != StructLengthIndicator.list:
@@ -242,6 +238,12 @@ class Payload:
         # => remove them to not have to include them in the parse map
         if struct_type is StructType.map and key != StructLengthIndicator.map:
             return Payload.strip_map_key(key)
+
+        # Leaving any unknown keys unparsed may not always be practical, so allow another "magic key" to be specified
+        # that determines a parse target type for any otherwise unmapped key (no need to check if fallback key is
+        # actually in parse map, as it will skip parsing anyway if neither fallback nor key are in the parse map
+        if parse_map is not None and key not in parse_map:
+            return MagicParseKey.fallback
 
         return key
 

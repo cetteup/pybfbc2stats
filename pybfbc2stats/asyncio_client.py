@@ -3,7 +3,7 @@ from typing import List, Tuple, Optional, Union
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
-    TheaterStep, ENCODING, FeslParseMap
+    TheaterStep, ENCODING, FeslParseMap, TheaterParseMap
 from .exceptions import PlayerNotFoundError, AuthError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
 from .payload import Payload, StrValue, IntValue, ParseMap
@@ -325,8 +325,8 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         lobbies = []
         for i in range(num_lobbies):
             ldat_response = await self.wrapped_read(tid)
-            ldat = self.parse_simple_response(ldat_response)
-            lobbies.append(ldat)
+            ldat = ldat_response.get_payload(TheaterParseMap.FallbackOnly)
+            lobbies.append(dict(ldat))
 
         return lobbies
 
@@ -356,8 +356,8 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         servers = []
         for i in range(num_games):
             gdat_response = await self.wrapped_read(tid)
-            gdat = self.parse_simple_response(gdat_response)
-            servers.append(gdat)
+            gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            servers.append(dict(gdat))
 
         return servers
 
@@ -385,17 +385,17 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         is_error, error = self.is_error_response(gdat_response)
         if is_error:
             raise error
-        gdat = self.parse_simple_response(gdat_response)
+        gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
         gdet_response = await self.wrapped_read(tid)
-        gdet = self.parse_simple_response(gdet_response)
+        gdet = gdet_response.get_payload(TheaterParseMap.FallbackOnly)
 
         # Determine number of active players (AP)
-        num_players = int(gdat.get('AP', int()))
+        num_players = gdat.get_int('AP', int())
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
             pdat_response = await self.wrapped_read(tid)
-            pdat = self.parse_simple_response(pdat_response)
-            players.append(pdat)
+            pdat = pdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            players.append(dict(pdat))
 
-        return gdat, gdet, players
+        return dict(gdat), dict(gdet), players

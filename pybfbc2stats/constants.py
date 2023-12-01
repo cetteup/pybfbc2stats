@@ -75,7 +75,20 @@ class TheaterTransmissionType(TransmissionType):
     ErrorResponse = 3
 
 
-class FeslParseMap(dict, Enum):
+class MagicParseKey(str, Enum):
+    index = '_index_'
+    fallback = '_fallback_'
+
+    def __str__(self):
+        return self.value
+
+
+class ParseMapEnum(dict, Enum):
+    def __contains__(self, item):
+        return item in self.value
+
+
+class FeslParseMap(ParseMapEnum):
     UserLookup = {
         'userId': int,
         'userName': str,
@@ -100,8 +113,11 @@ class FeslParseMap(dict, Enum):
         'key': str
     }
 
-    def __contains__(self, item):
-        return item in self.value
+
+class TheaterParseMap(ParseMapEnum):
+    FallbackOnly = {
+        MagicParseKey.fallback: str
+    }
 
 
 FRAGMENT_SIZE = 8096
