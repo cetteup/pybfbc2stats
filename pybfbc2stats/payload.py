@@ -110,7 +110,7 @@ class Payload:
             return default
 
         if isinstance(value, bytes):
-            value = value.decode()
+            value = value.decode(ENCODING)
 
         return int(value)
 
@@ -120,7 +120,7 @@ class Payload:
             return default
 
         if isinstance(value, bytes):
-            value = value.decode()
+            value = value.decode(ENCODING)
 
         return float(value)
 
