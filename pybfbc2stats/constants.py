@@ -97,8 +97,6 @@ class FeslParseMap(ParseMapEnum):
         MagicParseKey.fallback: str
     }
     Stats = {
-        'key': str,
-        'value': float
         'value': float,
         MagicParseKey.fallback: str
     }
