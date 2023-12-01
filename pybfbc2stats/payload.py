@@ -235,12 +235,12 @@ class Payload:
     def get_parse_map_key(key: str, struct_type: StructType) -> str:
         # Scalar list keys are just the index, so allow a "magic key" to be specified to avoid
         # having to specify every index in the parse map (which would be impractical at best)
-        if key.isnumeric():
+        if struct_type is StructType.list and key != StructLengthIndicator.list:
             return MagicParseKey.index
 
         # Map keys are wrapped in braces, e.g. {123456789}
         # => remove them to not have to include them in the parse map
-        if key.startswith('{') and key.endswith('}'):
+        if struct_type is StructType.map and key != StructLengthIndicator.map:
             return Payload.strip_map_key(key)
 
         return key
