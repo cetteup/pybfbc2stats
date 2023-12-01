@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Union
+from typing import Union, Dict
 
 
 class Step(int, Enum):
@@ -66,9 +66,113 @@ class TheaterTransmissionType(TransmissionType):
     ErrorResponse = 3
 
 
-DEFAULT_BUFFER_SIZE = 8096
+class MagicParseKey(str, Enum):
+    index = '_index_'
+    fallback = '_fallback_'
+
+    def __str__(self):
+        return self.value
+
+
+class ParseMapEnum(dict, Enum):
+    def __contains__(self, item):
+        return item in self.value
+
+
+class FeslParseMap(ParseMapEnum):
+    UserLookup = {
+        'userId': int,
+        'userName': str,
+        'namespace': str,
+        'masterUserId': int,
+        'xuid': int
+    }
+    NameSearch = {
+        'id': int,
+        'name': str,
+        'type': int
+    }
+    Stats = {
+        'key': str,
+        'value': float
+    }
+    Leaderboard = {
+        'owner': int,
+        'name': str,
+        'rank': int,
+        'value': float,
+        'key': str
+    }
+
+
+class TheaterParseMap(ParseMapEnum):
+    LDAT = {
+        'PASSING': int,
+        'TID': int,
+        'MAX-GAMES': int,
+        'NUM-GAMES': int,
+        'FAVORITE-GAMES': int,
+        'FAVORITE-PLAYERS': int,
+        'LID': int,
+        MagicParseKey.fallback: str
+    }
+    GDAT = {
+        'JP': int,
+        'F': int,
+        'B-U-sguid': int,
+        'HU': int,
+        'P': int,
+        'B-U-Hardcore': bool,
+        'B-U-Softcore': bool,
+        'B-numObservers': int,
+        'LID': int,
+        'B-U-QueueLength': int,
+        'QP': int,
+        'MP': int,
+        'B-U-HasPassword': bool,
+        'GID': int,
+        'B-U-public': bool,  # '1' or '0' on PC, 'YES' or 'NO' on console
+        'B-U-EA': bool,
+        'B-U-Punkbuster': bool,
+        'NF': int,
+        'B-U-elo': int,
+        'B-maxObservers': int,
+        'PW': bool,
+        'AP': int,
+        'TID': int,
+        'B-U-playgroup': bool,
+        'B-U-coralsea': bool,
+        MagicParseKey.fallback: str
+    }
+    GDET = {
+        'D-ThreeDSpotting': bool,
+        'D-FriendlyFire': float,
+        'D-ServerDescriptionCount': int,
+        'LID': int,
+        'D-AutoBalance': bool,
+        'D-Minimap': bool,
+        'D-ThirdPersonVehicleCameras': bool,
+        'GID': int,
+        'TID': int,
+        'D-Crosshair': bool,
+        'D-MinimapSpotting': bool,
+        'D-KillCam': bool,
+        MagicParseKey.fallback: str
+    }
+    PDAT = {
+        'TID': int,
+        'PID': int,
+        'UID': int,
+        'LID': int,
+        'GID': int,
+        MagicParseKey.fallback: str
+    }
+
+
+FRAGMENT_SIZE = 8096
 HEADER_LENGTH = 12
 HEADER_BYTE_ORDER = 'big'
+ENCODING = 'utf8'
 EPOCH_START = datetime(2008, 1, 1, tzinfo=timezone.utc)
 VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank', b'recp']
 VALID_HEADER_TYPES_THEATER = [b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']

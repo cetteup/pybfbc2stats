@@ -3,6 +3,7 @@ import unittest
 from pybfbc2stats import Error
 from pybfbc2stats.constants import FeslTransmissionType, TheaterTransmissionType
 from pybfbc2stats.packet import FeslPacket, TheaterPacket
+from pybfbc2stats.payload import Payload
 
 
 class FeslPacketTest(unittest.TestCase):
@@ -17,7 +18,7 @@ class FeslPacketTest(unittest.TestCase):
         packet = FeslPacket.build(header_stub, body_data, transmission_type, tid)
 
         # THEN
-        expected = FeslPacket(b'fsys\xc0\x00\x00\x01\x00\x00\x00\x17', b'TXN=Hello\n\x00')
+        expected = FeslPacket(b'fsys\xc0\x00\x00\x01\x00\x00\x00\x16', b'TXN=Hello\x00')
         self.assertEqual(expected, packet)
         self.assertIsNone(packet.validate())
 
@@ -31,7 +32,7 @@ class FeslPacketTest(unittest.TestCase):
         packet = FeslPacket.build(header_stub, body_data, transmission_type)
 
         # THEN
-        expected = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00"', b'TXN=MemCheck\nresult=\n\x00')
+        expected = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00!', b'TXN=MemCheck\nresult=\x00')
         self.assertEqual(expected, packet)
         self.assertIsNone(packet.validate())
 
@@ -122,6 +123,34 @@ class FeslPacketTest(unittest.TestCase):
         # THEN
         self.assertEqual(expected_length, body_length)
 
+    def test_get_payload(self):
+        # GIVEN
+        data = b'TXN=MemCheck\nresult='
+        packet = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00!', data + b'\x00')
+        self.assertIsNone(packet.validate())
+
+        # WHEN
+        payload = packet.get_payload()
+
+        # THEN
+        self.assertEqual(Payload.from_bytes(data), payload)
+
+    def test_get_payload_parsed(self):
+        # GIVEN
+        data = b'TXN=MemCheck\nresult='
+        parse_map = {
+            'TXN': str,
+            'result': str
+        }
+        packet = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00!', data + b'\x00')
+        self.assertIsNone(packet.validate())
+
+        # WHEN
+        payload = packet.get_payload(parse_map)
+
+        # THEN
+        self.assertEqual(Payload.from_bytes(data, parse_map), payload)
+
     def test_get_data(self):
         # GIVEN
         expected_data = b'TXN=MemCheck\nresult=\n'
@@ -159,7 +188,7 @@ class TheaterPacketTest(unittest.TestCase):
         packet = TheaterPacket.build(header_stub, body_data, transmission_type, tid)
 
         # THEN
-        expected = TheaterPacket(b'GDAT@\x00\x00\x00\x00\x00\x00&', b'LID=257\nGID=123456\nTID=1\n\x00')
+        expected = TheaterPacket(b'GDAT@\x00\x00\x00\x00\x00\x00%', b'LID=257\nGID=123456\nTID=1\x00')
         self.assertEqual(expected, packet)
         self.assertIsNone(packet.validate())
 
@@ -173,7 +202,7 @@ class TheaterPacketTest(unittest.TestCase):
         packet = TheaterPacket.build(header_stub, body_data, transmission_type)
 
         # THEN
-        expected = TheaterPacket(b'PING\x00\x00\x00\x00\x00\x00\x00\x13', b'TID=0\n\x00')
+        expected = TheaterPacket(b'PING\x00\x00\x00\x00\x00\x00\x00\x12', b'TID=0\x00')
         self.assertEqual(expected, packet)
         self.assertIsNone(packet.validate())
 
@@ -226,14 +255,14 @@ class TheaterPacketTest(unittest.TestCase):
 
     def test_validate_invalid_type(self):
         # GIVEN
-        packet = TheaterPacket(b'none@\x00\x00\x00\x00\x00\x00&', b'LID=257\nGID=123456\nTID=1\n\x00')
+        packet = TheaterPacket(b'none@\x00\x00\x00\x00\x00\x00&', b'LID=257\nGID=123456\nTID=1\x00')
 
         # WHEN/THEN
         self.assertRaises(Error, packet.validate_header)
 
     def test_validate_invalid_status_indicator(self):
         # GIVEN
-        packet = TheaterPacket(b'GDAT\x01\x01\x01\x01\x00\x00\x00&', b'LID=257\nGID=123456\nTID=1\n\x00')
+        packet = TheaterPacket(b'GDAT\x01\x01\x01\x01\x00\x00\x00%', b'LID=257\nGID=123456\nTID=1\x00')
 
         # WHEN/THEN
         self.assertRaises(Error, packet.validate_header)
