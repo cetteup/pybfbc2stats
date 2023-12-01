@@ -664,7 +664,7 @@ class FeslClient(Client):
             return data, False
 
         # Single packet response => return body as is
-        return packet.body, True
+        return packet.get_data(), True
 
     @staticmethod
     def format_search_response(parsed_response: List[dict], metadata: List[bytes]) -> dict:
