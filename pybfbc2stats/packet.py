@@ -4,7 +4,7 @@ from .constants import HEADER_LENGTH, VALID_HEADER_TYPES_FESL, VALID_HEADER_TYPE
     VALID_HEADER_ERROR_INDICATORS, HEADER_BYTE_ORDER, TransmissionType, FeslTransmissionType, TheaterTransmissionType, \
     ENCODING
 from .exceptions import Error
-from .payload import Payload
+from .payload import Payload, ParseMap
 
 
 class Packet:
@@ -112,6 +112,9 @@ class Packet:
     def validate(self) -> None:
         self.validate_header()
         self.validate_body()
+
+    def get_payload(self, parse_map: Optional[ParseMap] = None) -> Payload:
+        return Payload.from_bytes(self.get_data(), parse_map)
 
     def get_data(self) -> bytes:
         """

@@ -3,6 +3,7 @@ import unittest
 from pybfbc2stats import Error
 from pybfbc2stats.constants import FeslTransmissionType, TheaterTransmissionType
 from pybfbc2stats.packet import FeslPacket, TheaterPacket
+from pybfbc2stats.payload import Payload
 
 
 class FeslPacketTest(unittest.TestCase):
@@ -121,6 +122,34 @@ class FeslPacketTest(unittest.TestCase):
 
         # THEN
         self.assertEqual(expected_length, body_length)
+
+    def test_get_payload(self):
+        # GIVEN
+        data = b'TXN=MemCheck\nresult='
+        packet = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00!', data + b'\x00')
+        self.assertIsNone(packet.validate())
+
+        # WHEN
+        payload = packet.get_payload()
+
+        # THEN
+        self.assertEqual(Payload.from_bytes(data), payload)
+
+    def test_get_payload_parsed(self):
+        # GIVEN
+        data = b'TXN=MemCheck\nresult='
+        parse_map = {
+            'TXN': str,
+            'result': str
+        }
+        packet = FeslPacket(b'fsys\x80\x00\x00\x00\x00\x00\x00!', data + b'\x00')
+        self.assertIsNone(packet.validate())
+
+        # WHEN
+        payload = packet.get_payload(parse_map)
+
+        # THEN
+        self.assertEqual(Payload.from_bytes(data, parse_map), payload)
 
     def test_get_data(self):
         # GIVEN
