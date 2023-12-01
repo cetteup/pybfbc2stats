@@ -694,7 +694,7 @@ class FeslClient(Client):
             - 1 byte, meaning unknown (seems to always be \x00, so it may just be an end marker)
             """
             byte_order = ByteOrder.LittleEndian if platform is Platform.pc else ByteOrder.BigEndian
-            buffer = Buffer(value, byte_order)
+            buffer = Buffer(b64decode(unquote_to_bytes(value)), byte_order)
             raw_name = buffer.read(16)
             timestamp = EPOCH_START + timedelta(days=buffer.read_float())
             dogtags = FeslClient.extract_dogtags(buffer)

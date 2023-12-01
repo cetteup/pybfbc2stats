@@ -1,13 +1,20 @@
 import unittest
+from base64 import b64encode
+from urllib.parse import quote_from_bytes
 
 from pybfbc2stats import FeslClient, Platform, Error
+from pybfbc2stats.constants import ENCODING
+
+
+def encode(raw: bytes) -> bytes:
+    return quote_from_bytes(b64encode(raw)).encode(ENCODING)
 
 
 class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'some_player_name\x00\xc0GD\x01\x00\x02\x00\x03\x002\x00'
+            '1234567890': encode(b'some_player_name\x00\xc0GD\x01\x00\x02\x00\x03\x002\x00')
         }
 
         # WHEN
@@ -28,7 +35,7 @@ class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response_console(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'some_player_nameDG\xc0\x00\x00\x01\x00\x02\x00\x032\x00'
+            '1234567890': encode(b'some_player_nameDG\xc0\x00\x00\x01\x00\x02\x00\x032\x00')
         }
 
         # WHEN
@@ -46,7 +53,7 @@ class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response_remove_name_null_bytes(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'player_name\x00\x00\x00\x00\x00DG\xc0\x00\x00\x01\x00\x02\x00\x032\x00'
+            '1234567890': encode(b'player_name\x00\x00\x00\x00\x00DG\xc0\x00\x00\x01\x00\x02\x00\x032\x00')
         }
 
         # WHEN
@@ -59,7 +66,7 @@ class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response_replace_name_utf8_errors(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'\xac\x1d5\x08Dvil07\x00\x00\x00\x00\x00\x00\x00\xc0GD\x01\x00\x02\x00\x03\x002\x00'
+            '1234567890': encode(b'\xac\x1d5\x08Dvil07\x00\x00\x00\x00\x00\x00\x00\xc0GD\x01\x00\x02\x00\x03\x002\x00')
         }
 
         # WHEN
@@ -72,7 +79,7 @@ class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response_bad_company(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'some_player_name\x00\xc0GD\x06\x002\x00'
+            '1234567890': encode(b'some_player_name\x00\xc0GD\x06\x002\x00')
         }
 
         # WHEN
@@ -93,7 +100,7 @@ class FeslClientTest(unittest.TestCase):
     def test_format_dogtags_response_invalid_record(self):
         # GIVEN
         parsed_response = {
-            1234567890: b'some_player_name\x00\xc0GD2\x00'
+            '1234567890': encode(b'some_player_name\x00\xc0GD2\x00')
         }
 
         # WHEN/THEN
