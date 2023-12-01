@@ -87,26 +87,32 @@ class ParseMapEnum(dict, Enum):
 class FeslParseMap(ParseMapEnum):
     UserLookup = {
         'userId': int,
-        'userName': str,
-        'namespace': str,
         'masterUserId': int,
-        'xuid': int
+        'xuid': int,
+        MagicParseKey.fallback: str
     }
     NameSearch = {
         'id': int,
-        'name': str,
-        'type': int
+        'type': int,
+        MagicParseKey.fallback: str
     }
     Stats = {
         'key': str,
         'value': float
+        'value': float,
+        MagicParseKey.fallback: str
     }
     Leaderboard = {
         'owner': int,
-        'name': str,
         'rank': int,
         'value': float,
-        'key': str
+        MagicParseKey.fallback: str
+    }
+    Dogtags = {
+        'TTL': int,
+        'state': int,
+        MagicParseKey.map: bytes,  # Noop, but keeps fallback from applying to the map values
+        MagicParseKey.fallback: str
     }
 
 
