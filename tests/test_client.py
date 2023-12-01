@@ -30,7 +30,7 @@ class FeslClientTest(unittest.TestCase):
         self.assertEqual(2, formatted[0]['silver'])
         self.assertEqual(3, formatted[0]['bronze'])
         self.assertEqual(6, formatted[0]['dogtags'])
-        self.assertEqual(parsed_response[1234567890], formatted[0]['raw'])
+        self.assertEqual(parsed_response['1234567890'], formatted[0]['raw'])
 
     def test_format_dogtags_response_console(self):
         # GIVEN
@@ -95,7 +95,7 @@ class FeslClientTest(unittest.TestCase):
         self.assertNotIn('silver', formatted[0].keys())
         self.assertNotIn('bronze', formatted[0].keys())
         self.assertEqual(6, formatted[0]['dogtags'])
-        self.assertEqual(parsed_response[1234567890], formatted[0]['raw'])
+        self.assertEqual(parsed_response['1234567890'], formatted[0]['raw'])
 
     def test_format_dogtags_response_invalid_record(self):
         # GIVEN
