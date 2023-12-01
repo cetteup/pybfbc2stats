@@ -106,7 +106,65 @@ class FeslParseMap(ParseMapEnum):
 
 
 class TheaterParseMap(ParseMapEnum):
-    FallbackOnly = {
+    LDAT = {
+        'PASSING': int,
+        'TID': int,
+        'MAX-GAMES': int,
+        'NUM-GAMES': int,
+        'FAVORITE-GAMES': int,
+        'FAVORITE-PLAYERS': int,
+        'LID': int,
+        MagicParseKey.fallback: str
+    }
+    GDAT = {
+        'JP': int,
+        'F': int,
+        'B-U-sguid': int,
+        'HU': int,
+        'P': int,
+        'B-U-Hardcore': bool,
+        'B-U-Softcore': bool,
+        'B-numObservers': int,
+        'LID': int,
+        'B-U-QueueLength': int,
+        'QP': int,
+        'MP': int,
+        'B-U-HasPassword': bool,
+        'GID': int,
+        'B-U-public': bool,  # '1' or '0' on PC, 'YES' or 'NO' on console
+        'B-U-EA': bool,
+        'B-U-Punkbuster': bool,
+        'NF': int,
+        'B-U-elo': int,
+        'B-maxObservers': int,
+        'PW': bool,
+        'AP': int,
+        'TID': int,
+        'B-U-playgroup': bool,
+        'B-U-coralsea': bool,
+        MagicParseKey.fallback: str
+    }
+    GDET = {
+        'D-ThreeDSpotting': bool,
+        'D-FriendlyFire': float,
+        'D-ServerDescriptionCount': int,
+        'LID': int,
+        'D-AutoBalance': bool,
+        'D-Minimap': bool,
+        'D-ThirdPersonVehicleCameras': bool,
+        'GID': int,
+        'TID': int,
+        'D-Crosshair': bool,
+        'D-MinimapSpotting': bool,
+        'D-KillCam': bool,
+        MagicParseKey.fallback: str
+    }
+    PDAT = {
+        'TID': int,
+        'PID': int,
+        'UID': int,
+        'LID': int,
+        'GID': int,
         MagicParseKey.fallback: str
     }
 

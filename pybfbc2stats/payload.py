@@ -8,9 +8,10 @@ from .exceptions import Error, ParameterError
 StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
 FloatValue = Union[float, str, bytes]
-PayloadValue = Optional[Union[StrValue, IntValue, FloatValue]]
+BoolValue = Union[bool, str, bytes]
+PayloadValue = Optional[Union[StrValue, IntValue, FloatValue, BoolValue]]
 PayloadStruct = Optional[Union[Dict[str, Union[PayloadValue, 'PayloadStruct']], List[Union[PayloadValue, 'PayloadStruct']]]]
-ParseMap = Dict[str, Union[Type[str], Type[int], Type[float]]]
+ParseMap = Dict[str, Union[Type[str], Type[int], Type[float], Type[bool]]]
 ParsedPayloadStruct = Dict[str, Union[PayloadValue, List[Union[PayloadValue, 'ParsedPayloadStruct']], 'ParsedPayloadStruct']]
 
 
@@ -124,6 +125,19 @@ class Payload:
 
         return float(value)
 
+    def get_bool(self, key: str, default: Optional[bool] = None) -> Optional[bool]:
+        value = self.get(key)
+        if value is None:
+            return default
+
+        if isinstance(value, bytes):
+            value = value.decode(ENCODING)
+
+        if isinstance(value, str):
+            return self.str_to_bool(value)
+
+        return bool(value)
+
     def get_list(
             self,
             key: str,
@@ -223,6 +237,8 @@ class Payload:
             return Payload.parse_int(value)
         if target == float:
             return Payload.parse_float(value)
+        if target == bool:
+            return Payload.parse_bool(value)
 
         return value
 
@@ -271,6 +287,21 @@ class Payload:
         return Payload.decode_and_parse(value, float)
 
     @staticmethod
+    def parse_bool(value: bytes) -> bool:
+        as_str = Payload.parse_str(value)
+        return Payload.str_to_bool(as_str)
+
+    @staticmethod
+    def str_to_bool(value: str) -> bool:
+        if value in ['1', 'YES']:
+            return True
+        if value in ['0', 'NO']:
+            return False
+
+        # Raise error to adhere to behaviour of other parse methods
+        raise Error(f'could not convert string to bool: \'{value}\'')
+
+    @staticmethod
     def get_struct_length(data: ParsedPayloadStruct, indicator: Union[StructLengthIndicator, str]) -> int:
         return int(data.get(indicator, b'-1').decode(ENCODING))
 
@@ -306,6 +337,9 @@ class Payload:
     def encode(raw: Union[str, PayloadValue]) -> bytes:
         if isinstance(raw, bytes):
             return raw
+
+        if isinstance(raw, bool):
+            return Payload.encode(int(raw))
 
         if raw is None:
             return bytes()

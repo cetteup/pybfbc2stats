@@ -18,6 +18,7 @@ class PayloadTest(unittest.TestCase):
             'str': 'str',
             'int': 1,
             'float': 1.0,
+            'bool': True,
             'none': None
         }
 
@@ -29,8 +30,9 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual('str', payload.data.get('str'))
         self.assertEqual(1, payload.data.get('int'))
         self.assertEqual(1.0, payload.data.get('float'))
+        self.assertEqual(True, payload.data.get('float'))
         self.assertEqual(None, payload.data.get('none'))
-        self.assertEqual(5, len(payload.data))
+        self.assertEqual(6, len(payload.data))
 
     def test_from_bytes(self):
         # GIVEN
@@ -46,30 +48,41 @@ class PayloadTest(unittest.TestCase):
     def test_from_bytes_parsed(self):
         # GIVEN
         data = join_data([
-            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'none='
+            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'bool=1', b'unsupported=bytes', b'none='
         ])
         parse_map = {
             'str': str,
             'int': int,
-            'float': float
+            'float': float,
+            'bool': bool,
+            'unsupported': tuple
         }
 
         # WHEN
         actual = Payload.from_bytes(data, parse_map)
 
         # THEN
-        expected = Payload(bytes=b'"some%20bytes"', str='a str', int=1, float=1.0, none=b'')
+        expected = Payload(
+            bytes=b'"some%20bytes"',
+            str='a str',
+            int=1,
+            float=1.0,
+            bool=True,
+            unsupported=b'bytes',
+            none=b''
+        )
         self.assertEqual(expected, actual)
 
     def test_from_bytes_parsed_with_fallback(self):
         # GIVEN
         data = join_data([
-            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'none='
+            b'bytes="some%20bytes"', b'str="a%20str"', b'int=1', b'float=1.0', b'bool=1', b'none='
         ])
         parse_map = {
             'str': str,
             'int': int,
             'float': float,
+            'bool': bool,
             MagicParseKey.fallback: str
         }
 
@@ -77,7 +90,7 @@ class PayloadTest(unittest.TestCase):
         actual = Payload.from_bytes(data, parse_map)
 
         # THEN
-        expected = Payload(bytes='some bytes', str='a str', int=1, float=1.0, none='')
+        expected = Payload(bytes='some bytes', str='a str', int=1, float=1.0, bool=True, none='')
         self.assertEqual(expected, actual)
 
     def test_from_bytes_list(self):
@@ -185,6 +198,21 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         self.assertEqual([1.0, -1.0, 3.22E7, 3.22E-7], payload.data.get('float'))
+
+    def test_from_bytes_list_parsed_bool(self):
+        # GIVEN
+        data = join_data([
+            b'bool.0=1', b'bool.1=0', b'bool.2=YES', b'bool.3=NO', b'bool.[]=4',
+        ])
+        parse_map = {
+            MagicParseKey.index: bool
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual([True, False, True, False], payload.data.get('bool'))
 
     def test_from_bytes_list_parsed_nested(self):
         # GIVEN
@@ -328,11 +356,13 @@ class PayloadTest(unittest.TestCase):
         non_utf8_str_data = b'str=\xac\x1d5\x08'
         non_int_data = b'int=value'
         non_float_data = b'float=value'
+        non_bool_data = b'bool=value'
 
         # WHEN/THEN
         self.assertRaises(Error, Payload.from_bytes, non_utf8_str_data, {'str': str})
         self.assertRaises(Error, Payload.from_bytes, non_int_data, {'int': int})
         self.assertRaises(Error, Payload.from_bytes, non_float_data, {'float': float})
+        self.assertRaises(Error, Payload.from_bytes, non_bool_data, {'bool': bool})
 
     def test_bytes(self):
         # GIVEN
@@ -347,20 +377,23 @@ class PayloadTest(unittest.TestCase):
 
     def test_bytes_list(self):
         # GIVEN
-        payload = Payload(list=[b'bytes', 'str', 1, 1.0, None])
+        payload = Payload(list=[b'bytes', 'str', 1, 1.0, True, None])
 
         # WHEN
         actual = bytes(payload)
 
         # THEN
-        expected = join_data([b'list.0=bytes', b'list.1=str', b'list.2=1', b'list.3=1.0', b'list.4=', b'list.[]=5'])
+        expected = join_data([
+            b'list.0=bytes', b'list.1=str', b'list.2=1', b'list.3=1.0', b'list.4=1', b'list.5=',
+            b'list.[]=6'
+        ])
         self.assertEqual(expected, actual)
 
     def test_bytes_list_nested(self):
         # GIVEN
         payload = Payload(list=[
-            [b'bytes', 'str', 1, 1.0, None],
-            [b'other-bytes', 'other-str', 2, 2.0, None]
+            [b'bytes', 'str', 1, 1.0, True, None],
+            [b'other-bytes', 'other-str', 2, 2.0, False, None]
         ])
 
         # WHEN
@@ -368,10 +401,12 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         expected = join_data([
-            b'list.0.0=bytes', b'list.0.1=str', b'list.0.2=1', b'list.0.3=1.0', b'list.0.4=',
-            b'list.0.[]=5',
-            b'list.1.0=other-bytes', b'list.1.1=other-str', b'list.1.2=2', b'list.1.3=2.0', b'list.1.4=',
-            b'list.1.[]=5',
+            b'list.0.0=bytes', b'list.0.1=str',
+            b'list.0.2=1', b'list.0.3=1.0', b'list.0.4=1',b'list.0.5=',
+            b'list.0.[]=6',
+            b'list.1.0=other-bytes', b'list.1.1=other-str',
+            b'list.1.2=2', b'list.1.3=2.0', b'list.1.4=0', b'list.1.5=',
+            b'list.1.[]=6',
             b'list.[]=2'
         ])
         self.assertEqual(expected, actual)
@@ -384,6 +419,7 @@ class PayloadTest(unittest.TestCase):
                 'str': 'str',
                 'int': 1,
                 'float': 1.0,
+                'bool': True,
                 'none': None
             },
             {
@@ -391,6 +427,7 @@ class PayloadTest(unittest.TestCase):
                 'str': 'other-str',
                 'int': 2,
                 'float': 2.0,
+                'bool': False,
                 'none': None
             }
         ])
@@ -400,8 +437,10 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         expected = join_data([
-            b'list.0.bytes=bytes', b'list.0.str=str', b'list.0.int=1', b'list.0.float=1.0', b'list.0.none=',
-            b'list.1.bytes=other-bytes', b'list.1.str=other-str', b'list.1.int=2', b'list.1.float=2.0', b'list.1.none=',
+            b'list.0.bytes=bytes', b'list.0.str=str',
+            b'list.0.int=1', b'list.0.float=1.0', b'list.0.bool=1', b'list.0.none=',
+            b'list.1.bytes=other-bytes', b'list.1.str=other-str',
+            b'list.1.int=2', b'list.1.float=2.0', b'list.1.bool=0', b'list.1.none=',
             b'list.[]=2'
         ])
         self.assertEqual(expected, actual)
@@ -413,6 +452,7 @@ class PayloadTest(unittest.TestCase):
             'str': 'str',
             'int': 1,
             'float': 1.0,
+            'bool': True,
             'none': None
         })
 
@@ -421,7 +461,7 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         expected = join_data([
-            b'dict.bytes=bytes', b'dict.str=str', b'dict.int=1', b'dict.float=1.0', b'dict.none=',
+            b'dict.bytes=bytes', b'dict.str=str', b'dict.int=1', b'dict.float=1.0', b'dict.bool=1', b'dict.none=',
         ])
         self.assertEqual(expected, actual)
 
@@ -433,6 +473,7 @@ class PayloadTest(unittest.TestCase):
                 'str': 'str',
                 'int': 1,
                 'float': 1.0,
+                'bool': True,
                 'none': None
             }
         })
@@ -443,15 +484,15 @@ class PayloadTest(unittest.TestCase):
         # THEN
         expected = join_data([
             b'dict.key.bytes=bytes', b'dict.key.str=str',
-            b'dict.key.int=1', b'dict.key.float=1.0', b'dict.key.none='
+            b'dict.key.int=1', b'dict.key.float=1.0', b'dict.key.bool=1', b'dict.key.none='
         ])
         self.assertEqual(expected, actual)
 
     def test_bytes_dict_list(self):
         # GIVEN
         payload =Payload(dict={
-            'key': [b'bytes', 'str', 1, 1.0, None],
-            'other-key': [b'other-bytes', 'other-str', 2, 2.0, None]
+            'key': [b'bytes', 'str', 1, 1.0, True, None],
+            'other-key': [b'other-bytes', 'other-str', 2, 2.0, False, None]
         })
 
         # WHEN
@@ -459,11 +500,12 @@ class PayloadTest(unittest.TestCase):
 
         # THEN
         expected = join_data([
-            b'dict.key.0=bytes', b'dict.key.1=str', b'dict.key.2=1', b'dict.key.3=1.0', b'dict.key.4=',
-            b'dict.key.[]=5',
-            b'dict.other-key.0=other-bytes', b'dict.other-key.1=other-str', b'dict.other-key.2=2',
-            b'dict.other-key.3=2.0', b'dict.other-key.4=',
-            b'dict.other-key.[]=5',
+            b'dict.key.0=bytes', b'dict.key.1=str',
+            b'dict.key.2=1', b'dict.key.3=1.0', b'dict.key.4=1', b'dict.key.5=',
+            b'dict.key.[]=6',
+            b'dict.other-key.0=other-bytes', b'dict.other-key.1=other-str',
+            b'dict.other-key.2=2', b'dict.other-key.3=2.0', b'dict.other-key.4=0', b'dict.other-key.5=',
+            b'dict.other-key.[]=6',
         ])
         self.assertEqual(expected, actual)
 
@@ -670,6 +712,24 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(1.0, existing)
         self.assertEqual(1.0, encoded)
         self.assertEqual(0.0, default)
+        self.assertIsNone(missing)
+
+    def test_get_bool(self):
+        # GIVEN
+        payload = Payload(true=1, false=0, encoded=b'YES')
+
+        # WHEN
+        true = payload.get_bool('true')
+        false = payload.get_bool('false')
+        encoded = payload.get_bool('encoded')
+        default = payload.get_bool('missing', True)
+        missing = payload.get_bool('missing')
+
+        # THEN
+        self.assertTrue(true)
+        self.assertFalse(false)
+        self.assertTrue(encoded)
+        self.assertTrue(default)
         self.assertIsNone(missing)
 
     def test_get_list(self):
