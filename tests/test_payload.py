@@ -160,7 +160,7 @@ class PayloadTest(unittest.TestCase):
             b'str.0="quoted value"', b'str.1=encoded%20value', b'str.2="quoted%20and%20encoded%20value"', b'str.[]=3',
         ])
         parse_map = {
-            MagicParseKey.index: str
+            MagicParseKey.list: str
         }
 
         # WHEN
@@ -175,7 +175,7 @@ class PayloadTest(unittest.TestCase):
             b'int.0=1', b'int.1=-1', b'int.[]=2',
         ])
         parse_map = {
-            MagicParseKey.index: int
+            MagicParseKey.list: int
         }
 
         # WHEN
@@ -190,7 +190,7 @@ class PayloadTest(unittest.TestCase):
             b'float.0=1.0', b'float.1=-1.0', b'float.2=3.22E7', b'float.3=3.22E-7', b'float.[]=4',
         ])
         parse_map = {
-            MagicParseKey.index: float
+            MagicParseKey.list: float
         }
 
         # WHEN
@@ -205,7 +205,7 @@ class PayloadTest(unittest.TestCase):
             b'bool.0=1', b'bool.1=0', b'bool.2=YES', b'bool.3=NO', b'bool.[]=4',
         ])
         parse_map = {
-            MagicParseKey.index: bool
+            MagicParseKey.list: bool
         }
 
         # WHEN
@@ -221,7 +221,7 @@ class PayloadTest(unittest.TestCase):
             b'nested.0.[]=5', b'nested.[]=1',
         ])
         parse_map = {
-            MagicParseKey.index: int
+            MagicParseKey.list: int
         }
 
         # WHEN
@@ -260,6 +260,139 @@ class PayloadTest(unittest.TestCase):
 
         # WHEN/THEN
         self.assertRaises(Error, Payload.from_bytes, data)
+
+    def test_from_bytes_map_parsed_str(self):
+        # GIVEN
+        data = join_data([
+            b'str.{a-key}="quoted value"',
+            b'str.{b-key}=encoded%20value',
+            b'str.{c-key}="quoted%20and%20encoded%20value"',
+            b'str.{}=3',
+        ])
+        parse_map = {
+            MagicParseKey.map: str
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': 'quoted value',
+            'b-key': 'encoded value',
+            'c-key': 'quoted and encoded value'
+        }, payload.data.get('str'))
+
+    def test_from_bytes_map_parsed_int(self):
+        # GIVEN
+        data = join_data([
+            b'int.{a-key}=1', b'int.{b-key}=-1', b'int.{}=2',
+        ])
+        parse_map = {
+            MagicParseKey.map: int
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': 1,
+            'b-key': -1
+        }, payload.data.get('int'))
+
+    def test_from_bytes_map_parsed_float(self):
+        # GIVEN
+        data = join_data([
+            b'float.{a-key}=1.0', b'float.{b-key}=-1.0', b'float.{c-key}=3.22E7', b'float.{d-key}=3.22E-7',
+            b'float.{}=4',
+        ])
+        parse_map = {
+            MagicParseKey.map: float
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': 1.0,
+            'b-key': -1.0,
+            'c-key': 3.22E7,
+            'd-key': 3.22E-7
+        }, payload.data.get('float'))
+
+    def test_from_bytes_map_parsed_bool(self):
+        # GIVEN
+        data = join_data([
+            b'bool.{a-key}=1', b'bool.{b-key}=0', b'bool.{c-key}=YES', b'bool.{d-key}=NO', b'bool.{}=4',
+        ])
+        parse_map = {
+            MagicParseKey.map: bool
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': True,
+            'b-key': False,
+            'c-key': True,
+            'd-key': False
+        }, payload.data.get('bool'))
+
+    def test_from_bytes_map_parsed_nested(self):
+        # GIVEN
+        data = join_data([
+            b'nested.{a-key}.{aa-key}=1', b'nested.{a-key}.{ab-key}=2', b'nested.{a-key}.{ac-key}=3',
+            b'nested.{a-key}.{ad-key}=4', b'nested.{a-key}.{ae-key}=5',
+            b'nested.{a-key}.{}=5', b'nested.{}=1',
+        ])
+        parse_map = {
+            MagicParseKey.map: int
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': {
+                'aa-key': 1,
+                'ab-key': 2,
+                'ac-key': 3,
+                'ad-key': 4,
+                'ae-key': 5
+            }
+        }, payload.data.get('nested'))
+
+    def test_from_bytes_map_parsed_dict(self):
+        # GIVEN
+        data = join_data([
+            b'dict.{a-key}.bytes=bytes', b'dict.{a-key}.str=str',
+            b'dict.{a-key}.int=1',b'dict.{a-key}.float=1.0', b'dict.{a-key}.none=',
+            b'dict.{}=1'
+        ])
+        parse_map = {
+            'str': str,
+            'int': int,
+            'float': float
+        }
+
+        # WHEN
+        payload = Payload.from_bytes(data, parse_map)
+
+        # THEN
+        self.assertEqual({
+            'a-key': {
+                'bytes': b'bytes',
+                'str': 'str',
+                'int': 1,
+                'float': 1.0,
+                'none': b''
+            }
+        }, payload.data.get('dict'))
 
     def test_from_bytes_dict(self):
         # GIVEN
@@ -833,32 +966,6 @@ class PayloadTest(unittest.TestCase):
             'other-key': [b'other-bytes', b'other-str', b'2', b'2.0', b'']
         }, actual)
 
-    def test_get_map_parsed(self):
-        # GIVEN
-        data = join_data([
-            b'map.{bytes}=bytes', b'map.{str}="a%20str"',
-            b'map.{int}=1', b'map.{float}=1.0', b'map.none=',
-            b'map.{}=5'
-        ])
-        parse_map = {
-            'str': str,
-            'int': int,
-            'float': float
-        }
-        payload = Payload.from_bytes(data, parse_map)
-
-        # WHEN
-        parsed = payload.get_map('map')
-
-        # THEN
-        self.assertEqual({
-            'bytes': b'bytes',
-            'str': 'a str',
-            'int': 1,
-            'float': 1.0,
-            'none': b''
-        }, parsed)
-
     def test_get_map_not_a_struct(self):
         # GIVEN
         payload = Payload(key=b'value')
@@ -919,7 +1026,7 @@ class PayloadTest(unittest.TestCase):
             b'personas.[]=1', b'personas.0=yeas-yuwn-ep-lon', b'TXN=NuGetPersonas'
         ])
         parse_map = {
-            MagicParseKey.index: str
+            MagicParseKey.list: str
         }
         payload = Payload.from_bytes(data, parse_map)
 

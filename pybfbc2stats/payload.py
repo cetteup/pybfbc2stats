@@ -252,14 +252,14 @@ class Payload:
         # Scalar list keys are just the index, so allow a "magic key" to be specified to avoid
         # having to specify every index in the parse map (which would be impractical at best)
         if struct_type is StructType.list and key != StructLengthIndicator.list:
-            return MagicParseKey.index
+            return MagicParseKey.list
 
-        # Map keys are wrapped in braces, e.g. {123456789}
-        # => remove them to not have to include them in the parse map
+        # Map keys are usually just an id, e.g. the persona id for dogtag records
+        # Since these keys are not known beforehand, allow a "magic key" for specifying a target type for map values
         if struct_type is StructType.map and key != StructLengthIndicator.map:
-            return Payload.strip_map_key(key)
+            return MagicParseKey.map
 
-        # Leaving any unknown keys unparsed may not always be practical, so allow another "magic key" to be specified
+        # Leaving any unknown keys unparsed may not always be practical, so allow a "magic key" to be specified
         # that determines a parse target type for any otherwise unmapped key (no need to check if fallback key is
         # actually in parse map, as it will skip parsing anyway if neither fallback nor key are in the parse map
         if parse_map is not None and key not in parse_map:

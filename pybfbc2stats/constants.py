@@ -65,9 +65,14 @@ class TheaterTransmissionType(TransmissionType):
     OKResponse = 2
     ErrorResponse = 3
 
-
+"""
+The magic list and map keys mean that values of all scalar lists/maps in a payload will be parsed
+to the type under the magic key. As there are currently no payloads in use with differently typed scalar lists,
+this is fine for now.
+"""
 class MagicParseKey(str, Enum):
-    index = '_index_'
+    list = '_list_'
+    map = '_map_'
     fallback = '_fallback_'
 
     def __str__(self):
