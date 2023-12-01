@@ -283,7 +283,7 @@ class FeslClient(Client):
         dogtags_packet = self.build_dogtag_query_packet(tid, userid)
         self.connection.write(dogtags_packet)
 
-        payload = self.get_response(tid)
+        payload = self.get_response(tid, parse_map=FeslParseMap.Dogtags)
         return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:

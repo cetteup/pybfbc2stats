@@ -243,7 +243,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         dogtags_packet = self.build_dogtag_query_packet(tid, userid)
         await self.connection.write(dogtags_packet)
 
-        payload = await self.get_response(tid)
+        payload = await self.get_response(tid, parse_map=FeslParseMap.Dogtags)
         return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
 
     async def get_response(self, tid: int, parse_map: Optional[ParseMap] = None) -> Payload:

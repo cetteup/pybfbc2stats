@@ -2,7 +2,7 @@ import unittest
 from typing import List
 
 from pybfbc2stats import Error
-from pybfbc2stats.constants import MagicParseKey
+from pybfbc2stats.constants import MagicParseKey, FeslParseMap
 from pybfbc2stats.payload import Payload
 
 
@@ -1026,12 +1026,13 @@ class PayloadTest(unittest.TestCase):
             b'personas.[]=1', b'personas.0=yeas-yuwn-ep-lon', b'TXN=NuGetPersonas'
         ])
         parse_map = {
-            MagicParseKey.list: str
+            MagicParseKey.list: str,
+            MagicParseKey.fallback: str
         }
         payload = Payload.from_bytes(data, parse_map)
 
         # WHEN
-        txn = payload.get_str('TXN')
+        txn = payload.get('TXN')
         personas = payload.get_list('personas')
 
         # THEN
@@ -1044,16 +1045,10 @@ class PayloadTest(unittest.TestCase):
             b'userInfo.0.namespace=PS3_SUB', b'userInfo.0.userId=891451503', b'TXN=LookupUserInfo',
             b'userInfo.0.xuid=8030785869539906380', b'userInfo.0.userName=sam707', b'userInfo.[]=1'
         ])
-        parse_map = {
-            'namespace': str,
-            'userId': int,
-            'xuid': int,
-            'userName': str
-        }
-        payload = Payload.from_bytes(data, parse_map)
+        payload = Payload.from_bytes(data, FeslParseMap.UserLookup)
 
         # WHEN
-        txn = payload.get_str('TXN')
+        txn = payload.get('TXN')
         users = payload.get_list('userInfo')
 
         # THEN
@@ -1068,16 +1063,11 @@ class PayloadTest(unittest.TestCase):
             b'users.[]=1', b'users.0.id=1038690899', b'TXN=SearchOwners', b'users.0.name=Sam70786',
             b'nameSpaceId=XBL_SUB', b'users.0.type=1'
         ])
-        parse_map = {
-            'id': int,
-            'name': str,
-            'type': int
-        }
-        payload = Payload.from_bytes(data, parse_map)
+        payload = Payload.from_bytes(data, FeslParseMap.NameSearch)
 
         # WHEN
-        txn = payload.get_str('TXN')
-        namespace_id = payload.get_str('nameSpaceId')
+        txn = payload.get('TXN')
+        namespace_id = payload.get('nameSpaceId')
         users = payload.get_list('users')
 
         # THEN
@@ -1093,14 +1083,10 @@ class PayloadTest(unittest.TestCase):
             b'stats.1.key=losses', b'stats.[]=3', b'stats.2.value=16455.0', b'TXN=GetStats', b'stats.1.value=12006.0',
             b'stats.2.key=wins', b'stats.0.value=28461.0', b'stats.0.key=games'
         ])
-        parse_map = {
-            'key': str,
-            'value': float
-        }
-        payload = Payload.from_bytes(data, parse_map)
+        payload = Payload.from_bytes(data, FeslParseMap.Stats)
 
         # WHEN
-        txn = payload.get_str('TXN')
+        txn = payload.get('TXN')
         stats = payload.get_list('stats')
 
         # THEN
@@ -1113,24 +1099,25 @@ class PayloadTest(unittest.TestCase):
 
     def test_dogtags_as_map_response(self):
         # GIVEN
-        payload = Payload.from_bytes(
-            b'values.{992138898}=UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA\nlastModified="2023-09-22 19%3a42%3a57.0"\n'
-            b'state=1\nvalues.{1055242182}=QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA\n'
-            b'values.{1032604717}=bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA\n'
-            b'values.{939363578}=RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA\nTTL=0\nvalues.{}=10\n'
-            b'values.{1055240877}=RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA\n'
-            b'values.{1055254420}=RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA\n'
-            b'values.{1055257806}=RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA\n'
-            b'values.{1055257610}=TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA\n'
-            b'TXN=GetRecordAsMap\nvalues.{781949650}=TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A\n'
+        data = join_data([
+            b'values.{992138898}=UkVTUEFXTiBPTzcAAAAAAEWzfpIAARkA', b'lastModified="2023-09-22 19%3a42%3a57.0"',
+            b'state=1', b'values.{1055242182}=QnJhaW4gV3JvdWdodAAAAEWw6+8AARkA',
+            b'values.{1032604717}=bGVtZW5rb29sAAAAAAAAAEWw6+8AAQkA',
+            b'values.{939363578}=RmF1eE5hbWVsZXNzAAAAAEWw68wAARkA', b'TTL=0', b'values.{}=10',
+            b'values.{1055240877}=RmF3YXogZ2IAAAAAAAAAAEWw7AAAARcA',
+            b'values.{1055254420}=RmVsdEltcGFsYTY2ODkyAEWw7AcAAQYA',
+            b'values.{1055257806}=RGFya2xvcmQ5MHh4AAAAAEWw68QAAQAA',
+            b'values.{1055257610}=TmlnaHRnYW1lcjI2NTcAAEWw6+AAAQMA',
+            b'TXN=GetRecordAsMap', b'values.{781949650}=TUlLODEzAAAAAAAAAAAAAEWw6+EAAQ4A',
             b'values.{1048348626}=UnlhbkRXeW5uZQAAAAAAAEWw7AkAAhkA'
-        )
+        ])
+        payload = Payload.from_bytes(data, FeslParseMap.Dogtags)
 
         # WHEN
-        txn = payload.get_str('TXN')
-        ttl = payload.get_int('TTL')
-        state = payload.get_int('state')
-        last_modified = payload.get_str('lastModified')
+        txn = payload.get('TXN')
+        ttl = payload.get('TTL')
+        state = payload.get('state')
+        last_modified = payload.get('lastModified')
         values = payload.get_map('values')
 
         # THEN
