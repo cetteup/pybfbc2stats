@@ -5,7 +5,6 @@ from urllib.parse import unquote
 from .constants import ENCODING, MagicParseKey
 from .exceptions import Error, ParameterError
 
-PayloadData = Dict[str, bytes]
 StrValue = Union[str, bytes]
 IntValue = Union[int, str, bytes]
 FloatValue = Union[float, str, bytes]
@@ -272,10 +271,7 @@ class Payload:
         return Payload.decode_and_parse(value, float)
 
     @staticmethod
-    def get_struct_length(
-            data: Union[PayloadData, ParsedPayloadStruct],
-            indicator: Union[StructLengthIndicator, str]
-    ) -> int:
+    def get_struct_length(data: ParsedPayloadStruct, indicator: Union[StructLengthIndicator, str]) -> int:
         return int(data.get(indicator, b'-1').decode(ENCODING))
 
     @staticmethod

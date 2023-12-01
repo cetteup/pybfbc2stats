@@ -325,7 +325,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         lobbies = []
         for i in range(num_lobbies):
             ldat_response = await self.wrapped_read(tid)
-            ldat = ldat_response.get_payload(TheaterParseMap.FallbackOnly)
+            ldat = ldat_response.get_payload(TheaterParseMap.LDAT)
             lobbies.append(dict(ldat))
 
         return lobbies
@@ -356,7 +356,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         servers = []
         for i in range(num_games):
             gdat_response = await self.wrapped_read(tid)
-            gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
             servers.append(dict(gdat))
 
         return servers
@@ -385,9 +385,9 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         is_error, error = self.is_error_response(gdat_response)
         if is_error:
             raise error
-        gdat = gdat_response.get_payload(TheaterParseMap.FallbackOnly)
+        gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
         gdet_response = await self.wrapped_read(tid)
-        gdet = gdet_response.get_payload(TheaterParseMap.FallbackOnly)
+        gdet = gdet_response.get_payload(TheaterParseMap.GDET)
 
         # Determine number of active players (AP)
         num_players = gdat.get_int('AP', int())
@@ -395,7 +395,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         players = []
         for i in range(num_players):
             pdat_response = await self.wrapped_read(tid)
-            pdat = pdat_response.get_payload(TheaterParseMap.FallbackOnly)
+            pdat = pdat_response.get_payload(TheaterParseMap.PDAT)
             players.append(dict(pdat))
 
         return dict(gdat), dict(gdet), players
