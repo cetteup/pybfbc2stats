@@ -403,7 +403,7 @@ class FeslClient(Client):
         payload = Payload(TXN='NuLookupUserInfo', userInfo=lookups)
         # Use LookupUserInfo instead of NuLookupUserInfo for legacy namespaces
         if Namespace.is_legacy_namespace(namespace):
-            payload.set('TXN', 'LookupUserInfo')
+            payload['TXN'] = 'LookupUserInfo'
 
         return FeslPacket.build(
             b'acct',
@@ -423,8 +423,8 @@ class FeslClient(Client):
         )
         # Use SearchOwners instead of NuSearchOwners for legacy namespaces
         if Namespace.is_legacy_namespace(namespace):
-            payload.set('TXN', 'SearchOwners')
-            payload.set('retrieveUserIds', 1)
+            payload['TXN'] = 'SearchOwners'
+            payload['retrieveUserIds'] = 1
 
         return FeslPacket.build(
             b'acct',
