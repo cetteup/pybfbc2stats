@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Union
+from typing import Union, Dict
 
 
 class Step(int, Enum):
@@ -73,6 +73,35 @@ class TheaterTransmissionType(TransmissionType):
     Request = 1
     OKResponse = 2
     ErrorResponse = 3
+
+
+class FeslParseMap(dict, Enum):
+    UserLookup = {
+        'userId': int,
+        'userName': str,
+        'namespace': str,
+        'masterUserId': int,
+        'xuid': int
+    }
+    NameSearch = {
+        'id': int,
+        'name': str,
+        'type': int
+    }
+    Stats = {
+        'key': str,
+        'value': float
+    }
+    Leaderboard = {
+        'owner': int,
+        'name': str,
+        'rank': int,
+        'value': float,
+        'key': str
+    }
+
+    def __contains__(self, item):
+        return item in self.value
 
 
 FRAGMENT_SIZE = 8096

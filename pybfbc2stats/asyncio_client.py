@@ -3,10 +3,10 @@ from typing import List, Tuple, Optional, Union
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
-    TheaterStep
+    TheaterStep, ENCODING, FeslParseMap
 from .exceptions import PlayerNotFoundError, AuthError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
-from .payload import StrValue, IntValue
+from .payload import Payload, StrValue, IntValue, ParseMap
 
 
 class AsyncClient(Client):
@@ -118,7 +118,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         await self.connection.write(login_packet)
         response = await self.wrapped_read(tid)
 
-        response_valid, error_message = self.is_valid_login_response(response)
+        response_valid, error_message, code = self.is_valid_login_response(response)
         if not response_valid:
             raise AuthError(error_message)
 
@@ -144,19 +144,19 @@ class AsyncFeslClient(FeslClient, AsyncClient):
             await self.hello()
 
         packet = self.completed_steps[FeslStep.hello]
-        parsed = self.parse_simple_response(packet)
+        payload = packet.get_payload()
 
         # Field is called "ip" but actually contains the hostname
-        return parsed['theaterIp'], int(parsed['theaterPort'])
+        return payload.get_str('theaterIp', str()), payload.get_int('theaterPort', int())
 
     async def get_lkey(self) -> str:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             await self.login()
 
         packet = self.completed_steps[FeslStep.login]
-        parsed = self.parse_simple_response(packet)
+        payload = packet.get_payload()
 
-        return parsed['lkey']
+        return payload.get_str('lkey', str())
 
     async def lookup_usernames(self, usernames: List[StrValue], namespace: Namespace) -> List[dict]:
         return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
@@ -179,9 +179,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         await self.connection.write(lookup_packet)
 
-        raw_response = await self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_list_response(raw_response, b'userInfo.')
-        return parsed_response
+        payload = await self.get_response(tid, parse_map=FeslParseMap.UserLookup)
+        return payload.get_list('userInfo', list())
 
     async def lookup_user_identifier(self, identifier: Union[StrValue, IntValue], namespace: Namespace, lookup_type: LookupType) -> dict:
         results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
@@ -199,9 +198,11 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         await self.connection.write(search_packet)
 
-        raw_response = await self.get_complex_response(tid)
-        parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
-        return self.format_search_response(parsed_response, metadata)
+        payload = await self.get_response(tid, parse_map=FeslParseMap.NameSearch)
+        return {
+            'namespace': payload.get_str('nameSpaceId', str()),
+            'users': payload.get_list('users', list())
+        }
 
     async def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
         if self.track_steps and FeslStep.login not in self.completed_steps:
@@ -213,9 +214,8 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         for chunk_packet in chunk_packets:
             await self.connection.write(chunk_packet)
 
-        raw_response = await self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
-        return self.dict_list_to_dict(parsed_response)
+        payload = await self.get_response(tid, parse_map=FeslParseMap.Stats)
+        return self.dict_list_to_dict(payload.get_list('stats', list()))
 
     async def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                               keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
@@ -226,11 +226,14 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         await self.connection.write(leaderboard_packet)
 
-        raw_response = await self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
+        payload = await self.get_response(tid, parse_map=FeslParseMap.Leaderboard)
         # Turn sub lists into dicts and return result
-        return [{key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
-                 for (key, value) in persona.items()} for persona in parsed_response]
+        return [
+            {
+                key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+                for (key, value) in entry.items()
+            } for entry in payload.get_list('stats', list())
+        ]
 
     async def get_dogtags(self, userid: IntValue) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
@@ -240,19 +243,18 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         dogtags_packet = self.build_dogtag_query_packet(tid, userid)
         await self.connection.write(dogtags_packet)
 
-        raw_response = await self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_map_response(raw_response, b'values.')
-        return self.format_dogtags_response(parsed_response, self.platform)
+        payload = await self.get_response(tid)
+        return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
 
-    async def get_complex_response(self, tid: int) -> bytes:
-        response = b''
+    async def get_response(self, tid: int, parse_map: Optional[ParseMap] = None) -> Payload:
+        response = bytes()
         last_packet = False
         while not last_packet:
             packet = await self.wrapped_read(tid)
-            data, last_packet = self.process_complex_response_packet(packet)
+            data, last_packet = self.process_response_packet(packet)
             response += data
 
-        return response
+        return Payload.from_bytes(response, parse_map)
 
 
 class AsyncTheaterClient(TheaterClient, AsyncClient):
@@ -274,7 +276,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
-        connect_packet = self.build_conn_paket(tid, self.client_string)
+        connect_packet = self.build_conn_packet(tid, self.client_string)
         await self.connection.write(connect_packet)
 
         response = await self.connection.read()
@@ -316,8 +318,8 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
         # followed by n LDAT packets with the lobby details
         llst_response = await self.wrapped_read(tid)
-        llst = self.parse_simple_response(llst_response)
-        num_lobbies = int(llst['NUM-LOBBIES'])
+        llst = llst_response.get_payload()
+        num_lobbies = llst.get_int('NUM-LOBBIES', int())
 
         # Retrieve given number of lobbies (usually just one these days)
         lobbies = []
@@ -343,12 +345,12 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         is_error, error = self.is_error_response(glst_response)
         if is_error:
             raise error
-        glst = self.parse_simple_response(glst_response)
+        glst = glst_response.get_payload()
 
         # GLST contains LOBBY-NUM-GAMES (total number of games in lobby) and
         # NUM-GAMES (number of games matching filters), so NUM-GAMES <= LOBBY-NUM-GAMES,
         # => Use NUM-GAMES since Theater will only return GDAT packet for servers matching the filters
-        num_games = int(glst['NUM-GAMES'])
+        num_games = glst.get_int('NUM-GAMES', int())
 
         # Retrieve GDAT for all servers
         servers = []
@@ -388,7 +390,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         gdet = self.parse_simple_response(gdet_response)
 
         # Determine number of active players (AP)
-        num_players = int(gdat['AP'])
+        num_players = int(gdat.get('AP', int()))
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):

@@ -8,11 +8,11 @@ from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, FRAGMENT_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
-    EPOCH_START, ENCODING
+    EPOCH_START, ENCODING, FeslParseMap
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
-from .payload import Payload, StrValue, IntValue
+from .payload import Payload, StrValue, IntValue, ParseMap
 
 
 class Client:
@@ -158,7 +158,7 @@ class FeslClient(Client):
         self.connection.write(login_packet)
         response = self.wrapped_read(tid)
 
-        response_valid, error_message = self.is_valid_login_response(response)
+        response_valid, error_message, code = self.is_valid_login_response(response)
         if not response_valid:
             raise AuthError(error_message)
 
@@ -183,19 +183,19 @@ class FeslClient(Client):
             self.hello()
 
         packet = self.completed_steps[FeslStep.hello]
-        parsed = self.parse_simple_response(packet)
+        payload = packet.get_payload()
 
         # Field is called "ip" but actually contains the hostname
-        return parsed['theaterIp'], int(parsed['theaterPort'])
+        return payload.get_str('theaterIp', str()), payload.get_int('theaterPort', int())
 
     def get_lkey(self) -> str:
         if self.track_steps and FeslStep.login not in self.completed_steps:
             self.login()
 
         packet = self.completed_steps[FeslStep.login]
-        parsed = self.parse_simple_response(packet)
+        payload = packet.get_payload()
 
-        return parsed['lkey']
+        return payload.get_str('lkey', str())
 
     def lookup_usernames(self, usernames: List[StrValue], namespace: Namespace) -> List[dict]:
         return self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
@@ -218,9 +218,9 @@ class FeslClient(Client):
         lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
         self.connection.write(lookup_packet)
 
-        raw_response = self.get_complex_response(tid)
-        parsed_response, _ = self.parse_list_response(raw_response, b'userInfo.')
-        return parsed_response
+        payload = self.get_response(tid, parse_map=FeslParseMap.UserLookup)
+        users = payload.get_list('userInfo', list())
+        return users
 
     def lookup_user_identifier(self, identifier: Union[StrValue, IntValue], namespace: Namespace, lookup_type: LookupType) -> dict:
         results = self.lookup_user_identifiers([identifier], namespace, lookup_type)
@@ -238,9 +238,11 @@ class FeslClient(Client):
         search_packet = self.build_search_packet(tid, screen_name, namespace)
         self.connection.write(search_packet)
 
-        raw_response = self.get_complex_response(tid)
-        parsed_response, metadata = self.parse_list_response(raw_response, b'users.')
-        return self.format_search_response(parsed_response, metadata)
+        payload = self.get_response(tid, parse_map=FeslParseMap.NameSearch)
+        return {
+            'namespace': payload.get_str('nameSpaceId', str()),
+            'users': payload.get_list('users', list())
+        }
 
     def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
         if self.track_steps and FeslStep.login not in self.completed_steps:
@@ -252,9 +254,8 @@ class FeslClient(Client):
         for chunk_packet in chunk_packets:
             self.connection.write(chunk_packet)
 
-        raw_response = self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
-        return self.dict_list_to_dict(parsed_response)
+        payload = self.get_response(tid, parse_map=FeslParseMap.Stats)
+        return self.dict_list_to_dict(payload.get_list('stats', list()))
 
     def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                         keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
@@ -265,11 +266,14 @@ class FeslClient(Client):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        raw_response = self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_list_response(raw_response, b'stats.')
+        payload = self.get_response(tid, parse_map=FeslParseMap.Stats)
         # Turn sub lists into dicts and return result
-        return [{key: self.dict_list_to_dict(value) if isinstance(value, list) else value
-                 for (key, value) in persona.items()} for persona in parsed_response]
+        return [
+            {
+                key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+                for (key, value) in entry.items()
+            } for entry in payload.get_list('stats', list())
+        ]
 
     def get_dogtags(self, userid: IntValue) -> List[dict]:
         if self.track_steps and FeslStep.login not in self.completed_steps:
@@ -279,63 +283,44 @@ class FeslClient(Client):
         dogtags_packet = self.build_dogtag_query_packet(tid, userid)
         self.connection.write(dogtags_packet)
 
-        raw_response = self.get_complex_response(tid)
-        parsed_response, *_ = self.parse_map_response(raw_response, b'values.')
-        return self.format_dogtags_response(parsed_response, self.platform)
+        payload = self.get_response(tid)
+        return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
-        is_auto_respond_packet, handler = False, None
+        txn = packet.get_payload().get('TXN')
+        if txn == 'MemCheck':
+            return True, self.memcheck
+        elif txn == 'Ping':
+            return True, self.ping
 
-        # Check if packet is a memcheck/ping prompt
-        if b'TXN=MemCheck' in packet.body:
-            is_auto_respond_packet = True
-            handler = self.memcheck
-        elif b'TXN=Ping' in packet.body:
-            is_auto_respond_packet = True
-            handler = self.ping
+        return False, None
 
-        return is_auto_respond_packet, handler
-
-    def get_complex_response(self, tid: int) -> bytes:
-        response = b''
+    def get_response(self, tid: int, parse_map: Optional[ParseMap] = None) -> Payload:
+        response = bytes()
         last_packet = False
         while not last_packet:
             packet = self.wrapped_read(tid)
-            data, last_packet = self.process_complex_response_packet(packet)
+            data, last_packet = self.process_response_packet(packet)
             response += data
 
-        return response
+        return Payload.from_bytes(response, parse_map)
 
     @staticmethod
     def build_list_body(items: List[Union[bytes, Dict[bytes, bytes]]], prefix: bytes) -> bytes:
         warnings.warn(
             'The "build_list_body" method is deprecated, build packet bodies via "Payload" instead',
-            DeprecationWarning,
-            2
+            DeprecationWarning
         )
 
-        # Convert item list to bytes following "prefix.index.key=value"-format
-        item_list = []
-        for index, item in enumerate(items):
-            if isinstance(item, dict):
-                for key, value in item.items():
-                    dotted_elements = [prefix, str(index).encode(ENCODING), key]
-                    # byte dict with prefix: userInfo.0.userName=NoobKillah
-                    item_list.append(FeslClient.build_list_item(dotted_elements, value))
-            else:
-                # bytes with prefix only: keys.0=accuracy
-                dotted_elements = [prefix, str(index).encode(ENCODING)]
-                item_list.append(FeslClient.build_list_item(dotted_elements, item))
-
-        # Join list together, add list length indicator and return
-        return b'\n'.join(item_list) + b'\n' + prefix + b'.[]=' + str(len(items)).encode(ENCODING)
+        return bytes(Payload(**{
+            prefix: items
+        }))
 
     @staticmethod
     def build_list_item(dotted_elements: List[bytes], value: bytes) -> bytes:
         warnings.warn(
             'The "build_list_item" method is deprecated, build packet bodies via "Payload" instead',
-            DeprecationWarning,
-            2
+            DeprecationWarning
         )
 
         return b'.'.join(dotted_elements) + b'=' + value
@@ -524,18 +509,26 @@ class FeslClient(Client):
         )
 
     @staticmethod
-    def is_valid_login_response(response: Packet) -> Tuple[bool, str]:
-        valid = b'lkey=' in response.body
+    def is_valid_login_response(response: Packet) -> Tuple[bool, str, int]:
+        payload = response.get_payload()
+
+        valid = payload.get('lkey') is not None
         if not valid:
-            lines = response.get_data_lines()
-            message = next((line[18:-1] for line in lines if line.startswith(b'localizedMessage=')), b'').decode(ENCODING)
+            message = payload.get_str('localizedMessage')
+            code = payload.get_int('errorCode')
         else:
             message = ''
+            code = 0
 
-        return valid, message
+        return valid, message, code
 
     @staticmethod
     def parse_list_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[List[dict], List[bytes]]:
+        warnings.warn(
+            'The "parse_list_response" method is deprecated, parse packet bodies via "Payload" instead',
+            DeprecationWarning
+        )
+
         data_lines, meta_lines, entry_count = FeslClient.pre_parse_complex_response(
             raw_response,
             entry_prefix,
@@ -571,6 +564,11 @@ class FeslClient(Client):
 
     @staticmethod
     def parse_map_response(raw_response: bytes, entry_prefix: bytes) -> Tuple[Dict[str, bytes], List[bytes]]:
+        warnings.warn(
+            'The "parse_map_response" method is deprecated, parse packet bodies via "Payload" instead',
+            DeprecationWarning
+        )
+
         data_lines, meta_lines, entry_count = FeslClient.pre_parse_complex_response(
             raw_response,
             entry_prefix,
@@ -594,6 +592,11 @@ class FeslClient(Client):
             entry_prefix: bytes,
             structure: StructuredDataType
     ) -> Tuple[List[bytes], List[bytes], int]:
+        warnings.warn(
+            'The "pre_parse_complex_response" method is deprecated, parse packet bodies via "Payload" instead',
+            DeprecationWarning
+        )
+
         lines = raw_response.split(b'\n')
         # Assign lines to either data or meta lines
         meta_lines = []
@@ -614,39 +617,35 @@ class FeslClient(Client):
         return data_lines, meta_lines, entry_count
 
     @staticmethod
-    def process_complex_response_packet(packet: Packet) -> Tuple[bytes, bool]:
+    def process_response_packet(packet: Packet) -> Tuple[bytes, bool]:
         # Fifth byte indicates whether packet is single/multi packet request/response or ping packet
         transmission_type = packet.get_transmission_type()
-        body = packet.get_data()
-        lines = packet.get_data_lines()
+        payload = packet.get_payload()
 
         # Check for errors
-        if b'errorCode' in body:
-            method_line = next((line for line in lines if line.startswith(b'TXN')), b'')
-            method = method_line.split(b'=').pop()
-            error_code_line = next((line for line in lines if line.startswith(b'errorCode=')), b'')
-            error_code = error_code_line.split(b'=').pop()
-            error_message_line = next((line for line in lines if line.startswith(b'localizedMessage=')))
-            error_message = error_message_line.split(b'=').pop().strip(b'"')
-            if error_code == b'21':
+        error_code = payload.get_int('errorCode')
+        if error_code is not None:
+            method = payload.get_str('TXN')
+            error_message = payload.get_str('localizedMessage')
+            if error_code == 21:
                 raise ParameterError('FESL returned invalid parameter error')
-            elif error_code == b'101' and method == b'NuLookupUserInfo':
+            elif error_code == 101 and method == 'NuLookupUserInfo':
                 raise PlayerNotFoundError('FESL returned player not found error')
-            elif error_code == b'101' and method == b'NuSearchOwners':
+            elif error_code == 101 and method == 'NuSearchOwners':
                 raise SearchError('FESL returned player not found error')
-            elif error_code == b'104' and method == b'NuSearchOwners':
+            elif error_code == 104 and method == 'NuSearchOwners':
                 # Error code is returned if a) no results matched the query or b) too many results matched the query
                 # (the error message just says: "The data necessary for this transaction was not found")
                 raise SearchError('FESL found no or too many results matching the search query')
-            elif error_code == b'223' and method == b'SearchOwners':
+            elif error_code == 223 and method == 'SearchOwners':
                 # In contrast to NuSearchOwners, SearchOwners actually returns an empty list if no results are found,
                 # so the error code is only related to finding too many results
                 # (also indicated by the error message: "Too many results found, please refine the search criteria")
                 raise SearchError('FESL found too many results matching the search query')
-            elif error_code == b'5000' and method.startswith(b'GetRecord'):
+            elif error_code == 5000 and method.startswith('GetRecord'):
                 raise RecordNotFoundError('FESL returned record not found error')
             else:
-                raise Error(f'FESL returned an error: {error_message.decode(ENCODING)} (code {error_code.decode(ENCODING)})')
+                raise Error(f'FESL returned an error: {error_message} (code {error_code})')
         elif transmission_type is not FeslTransmissionType.SinglePacketResponse and \
                 transmission_type is not FeslTransmissionType.MultiPacketResponse:
             # Packet is neither one data packet of a multi-packet response nor a single-packet response
@@ -654,22 +653,23 @@ class FeslClient(Client):
 
         if transmission_type is FeslTransmissionType.MultiPacketResponse:
             # Packet is one of multiple => base64 decode content
-            data_line = next(line for line in lines if line.startswith(b'data='))
             # URL decode/unquote and base64 decode data
-            data = b64decode(unquote_to_bytes(data_line[5:]))
-            last_packet = data[-1:] == b'\x00'
+            data = b64decode(unquote_to_bytes(payload.get('data')))
             # Remove "eof" indicator from last packet's data
+            last_packet = data[-1:] == b'\x00'
+            # Cannot return a payload here because the packet might be split into chunks in the middle of a key/value
+            # Creating a payload from such a chunk would result in the following chunk not being appended correctly
             if last_packet:
-                data = data[:-1]
-        else:
-            # Single packet response => return body as is
-            data = body
-            last_packet = True
+                return data[:-1], True
+            return data, False
 
-        return data, last_packet
+        # Single packet response => return body as is
+        return packet.body, True
 
     @staticmethod
     def format_search_response(parsed_response: List[dict], metadata: List[bytes]) -> dict:
+        warnings.warn('The "format_search_response" method is deprecated', DeprecationWarning)
+
         namespace_line = next(line for line in metadata if line.startswith(b'nameSpaceId'))
         namespace = namespace_line.split(b'=').pop()
 
@@ -701,7 +701,7 @@ class FeslClient(Client):
             rank = buffer.read_uchar()
 
             results.append({
-                'userId': key,
+                'userId': int(key),
                 # FESL returns mangled, incorrect names in extremely rare cases
                 # e.g. b'\xac\x1d5\x08Dvil07\x00\x00\x00\x00\x00\x00' for pid battlefield/272333965,
                 # whose actual name is 'DarkDvil07' as per a direct lookup
@@ -767,7 +767,7 @@ class TheaterClient(Client):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
-        connect_packet = self.build_conn_paket(tid, self.client_string)
+        connect_packet = self.build_conn_packet(tid, self.client_string)
         self.connection.write(connect_packet)
 
         response = self.connection.read()
@@ -817,8 +817,8 @@ class TheaterClient(Client):
         # Theater responds with an initial LLST packet, indicating the number of lobbies,
         # followed by n LDAT packets with the lobby details
         llst_response = self.wrapped_read(tid)
-        llst = self.parse_simple_response(llst_response)
-        num_lobbies = int(llst['NUM-LOBBIES'])
+        llst = llst_response.get_payload()
+        num_lobbies = llst.get_int('NUM-LOBBIES', int())
 
         # Retrieve given number of lobbies (usually just one these days)
         lobbies = []
@@ -849,12 +849,12 @@ class TheaterClient(Client):
         is_error, error = self.is_error_response(glst_response)
         if is_error:
             raise error
-        glst = self.parse_simple_response(glst_response)
+        glst = glst_response.get_payload()
 
         # GLST contains LOBBY-NUM-GAMES (total number of games in lobby) and
         # NUM-GAMES (number of games matching filters), so NUM-GAMES <= LOBBY-NUM-GAMES,
         # => Use NUM-GAMES since Theater will only return GDAT packet for servers matching the filters
-        num_games = int(glst['NUM-GAMES'])
+        num_games = glst.get_int('NUM-GAMES', int())
 
         # Retrieve GDAT for all servers
         servers = []
@@ -913,7 +913,7 @@ class TheaterClient(Client):
         gdet = self.parse_simple_response(gdet_response)
 
         # Determine number of active players (AP)
-        num_players = int(gdat['AP'])
+        num_players = int(gdat.get('AP', int()))
         # Read PDAT packets for all players
         players = []
         for i in range(num_players):
@@ -924,17 +924,13 @@ class TheaterClient(Client):
         return gdat, gdet, players
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
-        is_auto_respond_packet, handler = False, None
-
-        # Check if packet is a ping prompt
         if packet.header.startswith(b'PING'):
-            is_auto_respond_packet = True
-            handler = self.ping
+            return True, self.ping
 
-        return is_auto_respond_packet, handler
+        return False, None
 
     @staticmethod
-    def build_conn_paket(tid: int, client_string: StrValue) -> TheaterPacket:
+    def build_conn_packet(tid: int, client_string: StrValue) -> TheaterPacket:
         """
         Build the initial hello/connection packet
         :param tid: Transaction id (usually 1, must be sent as first packet)
@@ -1047,7 +1043,7 @@ class TheaterClient(Client):
 
     @staticmethod
     def is_valid_authentication_response(response: Packet) -> bool:
-        return b'NAME=' in response.body
+        return response.get_payload().get('NAME') is not None
 
     @staticmethod
     def is_error_response(response: Packet) -> Tuple[bool, Optional[Error]]:
