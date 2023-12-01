@@ -362,10 +362,10 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return servers
 
     async def get_server_details(self, lobby_id: IntValue, game_id: IntValue) -> Tuple[dict, dict, List[dict]]:
-        return await self.get_gdat(lid=lobby_id, gid=game_id)
+        return await self.get_gdat(LID=lobby_id, GID=game_id)
 
     async def get_current_server(self, user_id: IntValue) -> Tuple[dict, dict, List[dict]]:
-        return await self.get_gdat(uid=user_id)
+        return await self.get_gdat(UID=user_id)
 
     async def get_gdat(self, **kwargs: IntValue) -> Tuple[dict, dict, List[dict]]:
         if self.track_steps and TheaterStep.user not in self.completed_steps:
