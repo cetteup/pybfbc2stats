@@ -249,14 +249,7 @@ class TheaterPacket(Packet):
         Get transaction id from packet body
         :return: transaction id as int
         """
-        lines = self.get_data_lines()
-        tid_line = next((line for line in lines if b'TID=' in line), b'')
-        tid_bytes = tid_line[4:]
-
-        if not tid_bytes.isalnum():
-            return 0
-
-        return int(tid_bytes)
+        return self.get_payload().get_int('TID', int())
 
     def set_transmission_type(self, transmission_type: TransmissionType) -> None:
         header_array = bytearray(self.header)
