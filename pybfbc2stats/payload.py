@@ -226,6 +226,11 @@ class Payload:
 
     @staticmethod
     def parse_value(key: str, value: bytes, struct_type: StructType, parse_map: Optional[ParseMap]) -> PayloadValue:
+        # Always parse struct length indicators as int
+        if (struct_type is StructType.list and key == StructLengthIndicator.list
+                or struct_type is StructType.map and key == StructLengthIndicator.map):
+            return Payload.parse_int(value)
+
         map_key = Payload.get_parse_map_key(key, struct_type, parse_map)
         if parse_map is None or map_key not in parse_map:
             return value
@@ -303,7 +308,7 @@ class Payload:
 
     @staticmethod
     def get_struct_length(data: ParsedPayloadStruct, indicator: Union[StructLengthIndicator, str]) -> int:
-        return int(data.get(indicator, b'-1').decode(ENCODING))
+        return data.get(indicator, -1)
 
     @staticmethod
     def serialize_struct(struct: PayloadStruct, *args: str) -> List[bytes]:
