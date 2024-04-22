@@ -85,7 +85,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         await self.connection.close()
 
     async def hello(self) -> bytes:
-        if self.track_steps and FeslStep.hello in self.completed_steps:
+        if self.completed_step(FeslStep.hello):
             return bytes(self.completed_steps[FeslStep.hello])
 
         tid = self.get_transaction_id()
@@ -108,9 +108,9 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         await self.connection.write(memcheck_packet)
 
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
-        if self.track_steps and FeslStep.login in self.completed_steps:
+        if self.completed_step(FeslStep.login):
             return bytes(self.completed_steps[FeslStep.login])
-        elif self.track_steps and FeslStep.hello not in self.completed_steps:
+        elif not self.completed_step(FeslStep.hello):
             await self.hello()
 
         tid = self.get_transaction_id()
@@ -131,7 +131,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
-        if self.track_steps and FeslStep.login in self.completed_steps:
+        if self.completed_step(FeslStep.login):
             tid = self.get_transaction_id()
             logout_packet = self.build_logout_packet(tid)
             await self.connection.write(logout_packet)
@@ -143,7 +143,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         await self.connection.write(ping_packet)
 
     async def get_tos_version(self) -> bytes:
-        if self.track_steps and FeslStep.hello not in self.completed_steps:
+        if not self.completed_step(FeslStep.hello):
             await self.hello()
 
         tid = self.get_transaction_id()
@@ -154,7 +154,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         return response.get('version', bytes())
 
     async def get_theater_details(self) -> Tuple[str, int]:
-        if self.track_steps and FeslStep.hello not in self.completed_steps:
+        if not self.completed_step(FeslStep.hello):
             await self.hello()
 
         packet = self.completed_steps[FeslStep.hello]
@@ -164,7 +164,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         return payload.get_str('theaterIp', str()), payload.get_int('theaterPort', int())
 
     async def get_lkey(self) -> str:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         packet = self.completed_steps[FeslStep.login]
@@ -186,7 +186,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 
     async def lookup_user_identifiers(self, identifiers: List[Union[StrValue, IntValue]], namespace: Namespace,
                                       lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         tid = self.get_transaction_id()
@@ -205,7 +205,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         return results.pop()
 
     async def search_name(self, screen_name: StrValue, namespace: Namespace) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         tid = self.get_transaction_id()
@@ -219,7 +219,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         }
 
     async def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         # Send query in chunks (using the same transaction id for all packets)
@@ -233,7 +233,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 
     async def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                               keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         tid = self.get_transaction_id()
@@ -250,7 +250,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         ]
 
     async def get_dogtags(self, userid: IntValue) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             await self.login()
 
         tid = self.get_transaction_id()
@@ -286,7 +286,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         self.lkey = lkey
 
     async def connect(self) -> bytes:
-        if self.track_steps and TheaterStep.conn in self.completed_steps:
+        if self.completed_step(TheaterStep.conn):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
@@ -299,9 +299,9 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return bytes(response)
 
     async def authenticate(self) -> bytes:
-        if self.track_steps and TheaterStep.user in self.completed_steps:
+        if self.completed_step(TheaterStep.user):
             return bytes(self.completed_steps[TheaterStep.user])
-        elif self.track_steps and TheaterStep.conn not in self.completed_steps:
+        elif not self.completed_step(TheaterStep.conn):
             await self.connect()
 
         tid = self.get_transaction_id()
@@ -322,7 +322,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         await self.connection.write(ping_packet)
 
     async def get_lobbies(self) -> List[dict]:
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
         tid = self.get_transaction_id()
@@ -345,7 +345,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return lobbies
 
     async def get_servers(self, lobby_id: IntValue) -> List[dict]:
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
         tid = self.get_transaction_id()
@@ -382,7 +382,7 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         return await self.get_gdat(UID=user_id)
 
     async def get_gdat(self, **kwargs: IntValue) -> Tuple[dict, dict, List[dict]]:
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
         tid = self.get_transaction_id()

@@ -48,6 +48,12 @@ class Client:
     def __exit__(self, *excinfo):
         self.connection.close()
 
+    def completed_step(self, step: Step) -> bool:
+        if not self.track_steps:
+            return False
+
+        return step in self.completed_steps
+
     def wrapped_read(self, tid: int) -> Packet:
         """
         Read a single packet from the connection and automatically respond plus read next packet if the initial packet
@@ -125,7 +131,7 @@ class FeslClient(Client):
         self.connection.close()
 
     def hello(self) -> bytes:
-        if self.track_steps and FeslStep.hello in self.completed_steps:
+        if self.completed_step(FeslStep.hello):
             return bytes(self.completed_steps[FeslStep.hello])
 
         tid = self.get_transaction_id()
@@ -148,9 +154,9 @@ class FeslClient(Client):
         self.connection.write(memcheck_packet)
 
     def login(self, tos_version: Optional[StrValue] = None) -> bytes:
-        if self.track_steps and FeslStep.login in self.completed_steps:
+        if self.completed_step(FeslStep.login):
             return bytes(self.completed_steps[FeslStep.login])
-        elif self.track_steps and FeslStep.hello not in self.completed_steps:
+        elif not self.completed_step(FeslStep.hello):
             self.hello()
 
         tid = self.get_transaction_id()
@@ -170,7 +176,7 @@ class FeslClient(Client):
         return bytes(response)
 
     def logout(self) -> Optional[bytes]:
-        if self.track_steps and FeslStep.login in self.completed_steps:
+        if self.completed_step(FeslStep.hello):
             tid = self.get_transaction_id()
             logout_packet = self.build_logout_packet(tid)
             self.connection.write(logout_packet)
@@ -182,7 +188,7 @@ class FeslClient(Client):
         self.connection.write(ping_packet)
 
     def get_tos_version(self) -> bytes:
-        if self.track_steps and FeslStep.hello not in self.completed_steps:
+        if not self.completed_step(FeslStep.hello):
             self.hello()
 
         tid = self.get_transaction_id()
@@ -193,7 +199,7 @@ class FeslClient(Client):
         return response.get('version', bytes())
 
     def get_theater_details(self) -> Tuple[str, int]:
-        if self.track_steps and FeslStep.hello not in self.completed_steps:
+        if not self.completed_step(FeslStep.hello):
             self.hello()
 
         packet = self.completed_steps[FeslStep.hello]
@@ -203,7 +209,7 @@ class FeslClient(Client):
         return payload.get_str('theaterIp', str()), payload.get_int('theaterPort', int())
 
     def get_lkey(self) -> str:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         packet = self.completed_steps[FeslStep.login]
@@ -225,7 +231,7 @@ class FeslClient(Client):
 
     def lookup_user_identifiers(self, identifiers: List[Union[StrValue, IntValue]], namespace: Namespace,
                                 lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -245,7 +251,7 @@ class FeslClient(Client):
         return results.pop()
 
     def search_name(self, screen_name: StrValue, namespace: Namespace) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -259,7 +265,7 @@ class FeslClient(Client):
         }
 
     def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         # Send query in chunks (using the same transaction id for all packets)
@@ -273,7 +279,7 @@ class FeslClient(Client):
 
     def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                         keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -290,7 +296,7 @@ class FeslClient(Client):
         ]
 
     def get_dogtags(self, userid: IntValue) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -787,7 +793,7 @@ class TheaterClient(Client):
         Initialize the connection to the Theater backend by sending the initial CONN/hello packet
         :return: Response packet data
         """
-        if self.track_steps and TheaterStep.conn in self.completed_steps:
+        if self.completed_step(TheaterStep.conn):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
@@ -804,9 +810,9 @@ class TheaterClient(Client):
         Authenticate against/log into the Theater backend using the lkey retrieved via FESL
         :return: Response packet data
         """
-        if self.track_steps and TheaterStep.user in self.completed_steps:
+        if self.completed_step(TheaterStep.user):
             return bytes(self.completed_steps[TheaterStep.user])
-        elif self.track_steps and TheaterStep.conn not in self.completed_steps:
+        elif not self.completed_step(TheaterStep.conn):
             self.connect()
 
         tid = self.get_transaction_id()
@@ -831,7 +837,7 @@ class TheaterClient(Client):
         Retrieve all available game (server) lobbies
         :return: List of lobby details
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()
@@ -859,7 +865,7 @@ class TheaterClient(Client):
         :param lobby_id: Id of the game server lobby
         :return: List of server details
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()
@@ -915,7 +921,7 @@ class TheaterClient(Client):
             b) id of user for which the current server should be returned (uid)
         :return: Tuple of (general server details, extended details, player list)
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()
