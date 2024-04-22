@@ -41,7 +41,7 @@ class Packet:
         """
         header = header_stub + b'\x00' * (HEADER_LENGTH - len(header_stub))
         # Add "tail" to body
-        body = bytes(body_data) + b'\x00'
+        body = bytes(body_data) + b'\n\x00'
         self = cls(header, body)
         # Update transaction id if given
         if tid is not None:
@@ -118,9 +118,17 @@ class Packet:
 
     def get_data(self) -> bytes:
         """
-        Get packet data (body without any trailing \x00 byte)
+        Get packet data (body without any trailing \x00 byte and linebreak)
         """
-        return self.body[:-1] if len(self.body) > 0 and self.body[-1] == 0 else self.body
+        data = self.body
+        # Remove any trailing \x00 byte
+        if len(data) > 0 and data[-1] == 0:
+            data = data[:-1]
+        # Remove any trailing line break
+        if len(data) > 0 and data[-1] == 10:
+            data = data[:-1]
+
+        return data
 
     def get_data_lines(self) -> List[bytes]:
         """
@@ -242,7 +250,7 @@ class TheaterPacket(Packet):
         Set/update the transaction id/packet counter in packet body (requires re-calculation of length indicators)
         """
         # Remove body "tail", add tid and add "tail" again
-        self.body = self.body[:-1] + b'\nTID=' + str(tid).encode(ENCODING) + b'\x00'
+        self.body = self.body[:-2] + b'\nTID=' + str(tid).encode(ENCODING) + b'\n\x00'
 
     def get_tid(self) -> int:
         """

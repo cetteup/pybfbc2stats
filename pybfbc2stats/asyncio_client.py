@@ -2,8 +2,8 @@ from typing import List, Tuple, Optional, Union
 
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
-from .constants import FeslStep, Namespace, BACKEND_DETAILS, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
-    TheaterStep, ENCODING, FeslParseMap, TheaterParseMap
+from .constants import FeslStep, Namespace, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
+    TheaterStep, ENCODING, FeslParseMap, TheaterParseMap, Backend
 from .exceptions import PlayerNotFoundError, AuthError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
 from .payload import Payload, StrValue, IntValue, ParseMap
@@ -52,25 +52,15 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 
     def __init__(self, username: StrValue, password: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = AsyncSecureConnection(
-            BACKEND_DETAILS[platform]['host'],
-            BACKEND_DETAILS[platform]['port'],
-            FeslPacket,
-            timeout
-        )
+        host, port, client_string = self.get_backend_details(Backend.official, platform)
+        connection = AsyncSecureConnection(host, port, FeslPacket, timeout)
         """
         Multiple inheritance works here, but only if we "skip" the FeslClient constructor. The method resolution here
         is: AsyncFeslClient, FeslClient, AsyncClient, Client. So, by calling super(), we would call the FeslClient
         __init__ function with parameters that make no sense. If we instead use super(FeslClient, self), we call
         FeslClient's super directly - effectively skipping the FeslClient constructor
         """
-        super(FeslClient, self).__init__(
-            connection,
-            platform,
-            BACKEND_DETAILS[platform]['clientString'],
-            timeout,
-            track_steps
-        )
+        super(FeslClient, self).__init__(connection, platform, client_string, timeout, track_steps)
         self.username = username
         self.password = password
 
@@ -129,6 +119,31 @@ class AsyncFeslClient(FeslClient, AsyncClient):
 
         return bytes(response)
 
+    async def login_persona(self, persona_name: Optional[str] = None) -> bytes:
+        if not self.completed_step(FeslStep.login):
+            await self.login()
+
+        # Fetch and use first available persona if none was given
+        if persona_name is None:
+            personas = await self.get_personas()
+            if len(personas) < 1:
+                raise AuthError("No persona available for login")
+
+            persona_name = personas[0]
+
+        tid = self.get_transaction_id()
+        login_persona_packet = self.build_persona_login_packet(tid, persona_name)
+        await self.connection.write(login_persona_packet)
+        response = await self.wrapped_read(tid)
+
+        response_valid, error_message, _ = self.is_valid_login_response(response)
+        if not response_valid:
+            raise AuthError(error_message)
+
+        self.completed_steps[FeslStep.login_persona] = response
+
+        return bytes(response)
+
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.completed_step(FeslStep.login):
@@ -171,6 +186,18 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
+
+    async def get_personas(self) -> List[str]:
+        if not self.completed_step(FeslStep.login):
+            await self.login()
+
+        tid = self.get_transaction_id()
+        packet = self.build_get_personas_packet(tid)
+        await self.connection.write(packet)
+
+        payload = await self.get_response(tid, parse_map=FeslParseMap.Personas)
+        personas = payload.get_list('personas', list())
+        return personas
 
     async def lookup_usernames(self, usernames: List[StrValue], namespace: Namespace) -> List[dict]:
         return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
@@ -275,14 +302,9 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
     def __init__(self, host: str, port: int, lkey: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         connection = AsyncConnection(host, port, TheaterPacket)
+        _, _, client_string = self.get_backend_details(Backend.official, platform)
         # "Skip" TheaterClient constructor, for details see note in AsyncFeslClient.__init__
-        super(TheaterClient, self).__init__(
-            connection,
-            platform,
-            BACKEND_DETAILS[platform]['clientString'],
-            timeout,
-            track_steps
-        )
+        super(TheaterClient, self).__init__(connection, platform, client_string, timeout, track_steps)
         self.lkey = lkey
 
     async def connect(self) -> bytes:

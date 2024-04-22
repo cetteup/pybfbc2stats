@@ -10,6 +10,7 @@ class Step(int, Enum):
 class FeslStep(Step):
     hello = 1
     login = 2
+    login_persona = 3
 
 
 class TheaterStep(Step):
@@ -46,6 +47,11 @@ class Platform(int, Enum):
     pc = 1
     xbox360 = 2
     ps3 = 3
+
+
+class Backend(int, Enum):
+    official = 1
+    rome = 2
 
 
 class TransmissionType(int, Enum):
@@ -85,6 +91,9 @@ class ParseMapEnum(dict, Enum):
 
 
 class FeslParseMap(ParseMapEnum):
+    Personas = {
+        MagicParseKey.list: str
+    }
     UserLookup = {
         'userId': int,
         'masterUserId': int,
@@ -186,22 +195,31 @@ EPOCH_START = datetime(2008, 1, 1, tzinfo=timezone.utc)
 VALID_HEADER_TYPES_FESL = [b'acct', b'fsys', b'rank', b'recp']
 VALID_HEADER_TYPES_THEATER = [b'CONN', b'USER', b'LLST', b'LDAT', b'GLST', b'GDAT', b'GDET', b'PDAT', b'PING']
 VALID_HEADER_ERROR_INDICATORS = [b'ngam', b'nrom', b'bpar', b'ntfn']
-BACKEND_DETAILS = {
-    Platform.pc: {
-        'host': 'bfbc2-pc-server.fesl.ea.com',
-        'port': 18321,
-        'clientString': b'bfbc2-pc'
+BACKEND_DETAILS: Dict[Backend, Dict[Platform, dict]] = {
+    Backend.official: {
+        Platform.pc: {
+            'host': 'bfbc2-pc-server.fesl.ea.com',
+            'port': 18321,
+            'clientString': b'bfbc2-pc'
+        },
+        Platform.xbox360: {
+            # Xbox 360 FESL (and Theater) resolve to private IP addresses, see DNS_OVERRIDES below for their public IPs
+            'host': 'bfbc2-360-server.fesl.ea.com',
+            'port': 18341,
+            'clientString': b'bfbc2-360'
+        },
+        Platform.ps3: {
+            'host': 'bfbc2-ps3-server.fesl.ea.com',
+            'port': 18331,
+            'clientString': b'bfbc2-ps3'
+        }
     },
-    Platform.xbox360: {
-        # Xbox 360 FESL (and Theater) resolve to private IP addresses, see DNS_OVERRIDES below for their public IPs
-        'host': 'bfbc2-360-server.fesl.ea.com',
-        'port': 18341,
-        'clientString': b'bfbc2-360'
-    },
-    Platform.ps3: {
-        'host': 'bfbc2-ps3-server.fesl.ea.com',
-        'port': 18331,
-        'clientString': b'bfbc2-ps3'
+    Backend.rome: {
+        Platform.pc: {
+            'host': 'bfbc2.emulatornexus.com',
+            'port': 18390,
+            'clientString': b'bfbc2-pc'
+        }
     }
 }
 # Added inactive PC and PS3 overrides for potential future use
