@@ -107,19 +107,22 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
 
-    async def login(self) -> bytes:
+    async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
         if self.track_steps and FeslStep.login in self.completed_steps:
             return bytes(self.completed_steps[FeslStep.login])
         elif self.track_steps and FeslStep.hello not in self.completed_steps:
             await self.hello()
 
         tid = self.get_transaction_id()
-        login_packet = self.build_login_packet(tid, self.username, self.password)
+        login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
         await self.connection.write(login_packet)
         response = await self.wrapped_read(tid)
 
         response_valid, error_message, code = self.is_valid_login_response(response)
         if not response_valid:
+            # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
+            if code == 260 and tos_version is None and (tos_version := await self.get_tos_version()) != bytes():
+                return await self.login(tos_version)
             raise AuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
@@ -138,6 +141,17 @@ class AsyncFeslClient(FeslClient, AsyncClient):
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
+
+    async def get_tos_version(self) -> bytes:
+        if self.track_steps and FeslStep.hello not in self.completed_steps:
+            await self.hello()
+
+        tid = self.get_transaction_id()
+        packet = self.build_tos_packet(tid)
+        await self.connection.write(packet)
+        response = await self.get_response(tid)
+
+        return response.get('version', bytes())
 
     async def get_theater_details(self) -> Tuple[str, int]:
         if self.track_steps and FeslStep.hello not in self.completed_steps:

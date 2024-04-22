@@ -147,19 +147,22 @@ class FeslClient(Client):
         memcheck_packet = self.build_memcheck_packet()
         self.connection.write(memcheck_packet)
 
-    def login(self) -> bytes:
+    def login(self, tos_version: Optional[StrValue] = None) -> bytes:
         if self.track_steps and FeslStep.login in self.completed_steps:
             return bytes(self.completed_steps[FeslStep.login])
         elif self.track_steps and FeslStep.hello not in self.completed_steps:
             self.hello()
 
         tid = self.get_transaction_id()
-        login_packet = self.build_login_packet(tid, self.username, self.password)
+        login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
         self.connection.write(login_packet)
         response = self.wrapped_read(tid)
 
         response_valid, error_message, code = self.is_valid_login_response(response)
         if not response_valid:
+            # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
+            if code == 260 and tos_version is None and (tos_version := self.get_tos_version()) != bytes():
+                return self.login(tos_version)
             raise AuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
@@ -177,6 +180,17 @@ class FeslClient(Client):
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         self.connection.write(ping_packet)
+
+    def get_tos_version(self) -> bytes:
+        if self.track_steps and FeslStep.hello not in self.completed_steps:
+            self.hello()
+
+        tid = self.get_transaction_id()
+        packet = self.build_tos_packet(tid)
+        self.connection.write(packet)
+        response = self.get_response(tid)
+
+        return response.get('version', bytes())
 
     def get_theater_details(self) -> Tuple[str, int]:
         if self.track_steps and FeslStep.hello not in self.completed_steps:
@@ -354,7 +368,7 @@ class FeslClient(Client):
         )
 
     @staticmethod
-    def build_login_packet(tid: int, username: StrValue, password: StrValue) -> FeslPacket:
+    def build_login_packet(tid: int, username: StrValue, password: StrValue, tos_version: Optional[StrValue] = None) -> FeslPacket:
         return FeslPacket.build(
             b'acct',
             Payload(
@@ -362,7 +376,8 @@ class FeslClient(Client):
                 returnEncryptedInfo=0,
                 name=username,
                 password=password,
-                macAddr='$000000000000'
+                macAddr='$000000000000',
+                tosVersion=tos_version
             ),
             FeslTransmissionType.SinglePacketRequest,
             tid
@@ -383,6 +398,15 @@ class FeslClient(Client):
             b'fsys',
             Payload(TXN='Ping'),
             FeslTransmissionType.SinglePacketResponse
+        )
+
+    @staticmethod
+    def build_tos_packet(tid: int) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct',
+            Payload(TXN='NuGetTos'),
+            FeslTransmissionType.SinglePacketRequest,
+            tid
         )
 
     @staticmethod
