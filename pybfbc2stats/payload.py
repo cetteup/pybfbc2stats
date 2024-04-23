@@ -306,7 +306,8 @@ class Payload:
     def str_to_bool(value: str) -> bool:
         if value in ['1', 'YES']:
             return True
-        if value in ['0', 'NO']:
+        # Project Rome Theater returns the server PW as an empty field, waiting for fix/clarification
+        if value in ['0', 'NO', '']:
             return False
 
         # Raise error to adhere to behaviour of other parse methods
