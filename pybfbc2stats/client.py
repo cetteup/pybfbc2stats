@@ -329,7 +329,7 @@ class FeslClient(Client):
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        payload = self.get_response(tid, parse_map=FeslParseMap.Stats)
+        payload = self.get_response(tid, parse_map=FeslParseMap.Leaderboard)
         # Turn sub lists into dicts and return result
         return [
             {
