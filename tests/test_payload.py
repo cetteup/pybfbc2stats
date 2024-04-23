@@ -1346,3 +1346,13 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(19, payload.get_int('TID'))
         self.assertEqual('NO', payload.get_str('B-U-coralsea'))
         self.assertEqual(0, payload.get_int('AP'))
+
+    def test_tid_with_nil_byte(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'TID=1\x00')
+
+        # WHEN
+        tid = payload.get_int('TID')
+
+        # THEN
+        self.assertEqual(1, tid)
