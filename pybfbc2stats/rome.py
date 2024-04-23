@@ -1,8 +1,8 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 
-from .asyncio_client import AsyncFeslClient
+from .asyncio_client import AsyncFeslClient, AsyncTheaterClient
 from .asyncio_connection import AsyncConnection
-from .client import FeslClient
+from .client import FeslClient, TheaterClient
 from .connection import Connection
 from .constants import Platform, Backend, FeslTransmissionType, FeslStep, LookupType, Namespace, STATS_KEYS, \
     DEFAULT_LEADERBOARD_KEYS
@@ -141,3 +141,19 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
 
     async def get_dogtags(self, userid: IntValue) -> List[dict]:
         raise NotImplementedError('Fetching dogtags of (other) players is not implemented on Project Rome')
+
+
+class RomeTheaterClient(TheaterClient):
+    def __init__(self, host: str, port: int, lkey: StrValue, timeout: float = 3.0, track_steps: bool = True):
+        super().__init__(host, port, lkey, Platform.pc, timeout, track_steps)
+
+    def get_current_server(self, user_id: IntValue) -> Tuple[dict, dict, List[dict]]:
+        raise NotImplementedError('Fetching the current server of players is not implemented on Project Rome')
+
+
+class AsyncRomeTheaterClient(AsyncTheaterClient, RomeTheaterClient):
+    def __init__(self, host: str, port: int, lkey: StrValue, timeout: float = 3.0, track_steps: bool = True):
+        super().__init__(host, port, lkey, Platform.pc, timeout, track_steps)
+
+    async def get_current_server(self, user_id: IntValue) -> Tuple[dict, dict, List[dict]]:
+        raise NotImplementedError('Fetching the current server of players is not implemented on Project Rome')
