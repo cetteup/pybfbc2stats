@@ -61,10 +61,10 @@ class RomeFeslClient(FeslClient):
 
     def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                         keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        raise NotImplementedError('Leaderboards are not implemented on Project')
+        raise NotImplementedError('Leaderboards are not implemented on Project Rome')
 
     def get_dogtags(self, userid: IntValue) -> List[dict]:
-        raise NotImplementedError('Looking up stats for (other) players is not implemented on Project')
+        raise NotImplementedError('Looking up stats for (other) players is not implemented on Project Rome')
 
     @staticmethod
     def build_login_packet(tid: int, username: StrValue, password: StrValue, tos_version: Optional[StrValue] = None) -> FeslPacket:
@@ -133,11 +133,11 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
         raise NotImplementedError('Searching players by name is not implemented on Project Rome')
 
     async def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
-        raise NotImplementedError('Fetching stats of (other) players is not implemented on Project')
+        raise NotImplementedError('Fetching stats of (other) players is not implemented on Project Rome')
 
     async def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                         keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        raise NotImplementedError('Leaderboards are not implemented on Project')
+        raise NotImplementedError('Leaderboards are not implemented on Project Rome')
 
     async def get_dogtags(self, userid: IntValue) -> List[dict]:
-        raise NotImplementedError('Fetching dogtags of (other) players is not implemented on Project')
+        raise NotImplementedError('Fetching dogtags of (other) players is not implemented on Project Rome')
