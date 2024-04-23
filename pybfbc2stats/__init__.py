@@ -7,6 +7,7 @@ from .constants import Platform, Namespace, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS
 from .exceptions import Error, TimeoutError, ParameterError, \
     PlayerNotFoundError, AuthError, ConnectionError, SearchError, \
     NotFoundError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError
+from .rome import RomeFeslClient, AsyncRomeFeslClient, RomeTheaterClient, AsyncRomeTheaterClient
 
 """
 pybfbc2stats.
@@ -18,6 +19,7 @@ __author__ = 'cetteup'
 __credits__ = 'nemo, Luigi Auriemma'
 __all__ = ['Connection', 'SecureConnection', 'FeslClient', 'TheaterClient',
            'AsyncConnection', 'AsyncSecureConnection', 'AsyncFeslClient', 'AsyncTheaterClient',
+           'RomeFeslClient', 'AsyncRomeFeslClient', 'RomeTheaterClient', 'AsyncRomeTheaterClient',
            'Platform', 'Namespace', 'DEFAULT_LEADERBOARD_KEYS', 'STATS_KEYS', 'GENERAL_STATS_KEYS', 'WEAPON_STATS_KEYS',
            'VEHICLE_STATS_KEYS', 'SERVICE_STARS_STATS_KEYS', 'AWARDS_STATS_KEYS', 'SINGLEPLAYER_STATS_KEYS',
            'Error', 'ConnectionError', 'ParameterError', 'TimeoutError',
