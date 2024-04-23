@@ -18,6 +18,10 @@ class ParameterError(Error):
     pass
 
 
+class NotImplementedError(Error):
+    pass
+
+
 class NotFoundError(Error):
     pass
 

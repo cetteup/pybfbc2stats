@@ -8,7 +8,7 @@ from .buffer import Buffer, ByteOrder
 from .connection import SecureConnection, Connection
 from .constants import STATS_KEYS, FRAGMENT_SIZE, FeslStep, Namespace, Platform, BACKEND_DETAILS, LookupType, \
     DEFAULT_LEADERBOARD_KEYS, Step, TheaterStep, FeslTransmissionType, TheaterTransmissionType, StructuredDataType, \
-    EPOCH_START, ENCODING, FeslParseMap, TheaterParseMap
+    EPOCH_START, ENCODING, FeslParseMap, TheaterParseMap, Backend
 from .exceptions import ParameterError, Error, PlayerNotFoundError, \
     SearchError, AuthError, ServerNotFoundError, LobbyNotFoundError, RecordNotFoundError, ConnectionError, TimeoutError
 from .packet import Packet, FeslPacket, TheaterPacket
@@ -47,6 +47,12 @@ class Client:
 
     def __exit__(self, *excinfo):
         self.connection.close()
+
+    def completed_step(self, step: Step) -> bool:
+        if not self.track_steps:
+            return False
+
+        return step in self.completed_steps
 
     def wrapped_read(self, tid: int) -> Packet:
         """
@@ -99,6 +105,15 @@ class Client:
         sorted_list = sorted(dict_list, key=lambda x: x['key'])
         return {entry['key']: entry['value'] for entry in sorted_list}
 
+    @staticmethod
+    def get_backend_details(backend: Backend, platform: Platform) -> Tuple[str, int, bytes]:
+        backend_details = BACKEND_DETAILS.get(backend, dict()).get(platform)
+
+        if backend_details is None:
+            raise Error(f'Backend {backend} does not support platform {platform}')
+
+        return backend_details['host'], backend_details['port'], backend_details['clientString']
+
 
 class FeslClient(Client):
     username: StrValue
@@ -108,12 +123,9 @@ class FeslClient(Client):
 
     def __init__(self, username: StrValue, password: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
-        connection = SecureConnection(
-            BACKEND_DETAILS[platform]['host'],
-            BACKEND_DETAILS[platform]['port'],
-            FeslPacket
-        )
-        super().__init__(connection, platform, BACKEND_DETAILS[platform]['clientString'], timeout, track_steps)
+        host, port, client_string = self.get_backend_details(Backend.official, platform)
+        connection = SecureConnection(host, port, FeslPacket)
+        super().__init__(connection, platform, client_string, timeout, track_steps)
         self.username = username
         self.password = password
 
@@ -125,7 +137,7 @@ class FeslClient(Client):
         self.connection.close()
 
     def hello(self) -> bytes:
-        if self.track_steps and FeslStep.hello in self.completed_steps:
+        if self.completed_step(FeslStep.hello):
             return bytes(self.completed_steps[FeslStep.hello])
 
         tid = self.get_transaction_id()
@@ -147,27 +159,55 @@ class FeslClient(Client):
         memcheck_packet = self.build_memcheck_packet()
         self.connection.write(memcheck_packet)
 
-    def login(self) -> bytes:
-        if self.track_steps and FeslStep.login in self.completed_steps:
+    def login(self, tos_version: Optional[StrValue] = None) -> bytes:
+        if self.completed_step(FeslStep.login):
             return bytes(self.completed_steps[FeslStep.login])
-        elif self.track_steps and FeslStep.hello not in self.completed_steps:
+        elif not self.completed_step(FeslStep.hello):
             self.hello()
 
         tid = self.get_transaction_id()
-        login_packet = self.build_login_packet(tid, self.username, self.password)
+        login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
         self.connection.write(login_packet)
         response = self.wrapped_read(tid)
 
         response_valid, error_message, code = self.is_valid_login_response(response)
         if not response_valid:
+            # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
+            if code == 260 and tos_version is None and (tos_version := self.get_tos_version()) != bytes():
+                return self.login(tos_version)
             raise AuthError(error_message)
 
         self.completed_steps[FeslStep.login] = response
 
         return bytes(response)
 
+    def login_persona(self, persona_name: Optional[str] = None) -> bytes:
+        if not self.completed_step(FeslStep.login):
+            self.login()
+
+        # Fetch and use first available persona if none was given
+        if persona_name is None:
+            personas = self.get_personas()
+            if len(personas) < 1:
+                raise AuthError("No persona available for login")
+
+            persona_name = personas[0]
+
+        tid = self.get_transaction_id()
+        login_persona_packet = self.build_persona_login_packet(tid, persona_name)
+        self.connection.write(login_persona_packet)
+        response = self.wrapped_read(tid)
+
+        response_valid, error_message, _ = self.is_valid_login_response(response)
+        if not response_valid:
+            raise AuthError(error_message)
+
+        self.completed_steps[FeslStep.login_persona] = response
+
+        return bytes(response)
+
     def logout(self) -> Optional[bytes]:
-        if self.track_steps and FeslStep.login in self.completed_steps:
+        if self.completed_step(FeslStep.hello):
             tid = self.get_transaction_id()
             logout_packet = self.build_logout_packet(tid)
             self.connection.write(logout_packet)
@@ -178,8 +218,19 @@ class FeslClient(Client):
         ping_packet = self.build_ping_packet()
         self.connection.write(ping_packet)
 
+    def get_tos_version(self) -> bytes:
+        if not self.completed_step(FeslStep.hello):
+            self.hello()
+
+        tid = self.get_transaction_id()
+        packet = self.build_tos_packet(tid)
+        self.connection.write(packet)
+        response = self.get_response(tid)
+
+        return response.get('version', bytes())
+
     def get_theater_details(self) -> Tuple[str, int]:
-        if self.track_steps and FeslStep.hello not in self.completed_steps:
+        if not self.completed_step(FeslStep.hello):
             self.hello()
 
         packet = self.completed_steps[FeslStep.hello]
@@ -189,13 +240,25 @@ class FeslClient(Client):
         return payload.get_str('theaterIp', str()), payload.get_int('theaterPort', int())
 
     def get_lkey(self) -> str:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         packet = self.completed_steps[FeslStep.login]
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
+
+    def get_personas(self) -> List[str]:
+        if not self.completed_step(FeslStep.login):
+            self.login()
+
+        tid = self.get_transaction_id()
+        packet = self.build_get_personas_packet(tid)
+        self.connection.write(packet)
+
+        payload = self.get_response(tid, parse_map=FeslParseMap.Personas)
+        personas = payload.get_list('personas', list())
+        return personas
 
     def lookup_usernames(self, usernames: List[StrValue], namespace: Namespace) -> List[dict]:
         return self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
@@ -211,7 +274,7 @@ class FeslClient(Client):
 
     def lookup_user_identifiers(self, identifiers: List[Union[StrValue, IntValue]], namespace: Namespace,
                                 lookup_type: LookupType) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -231,7 +294,7 @@ class FeslClient(Client):
         return results.pop()
 
     def search_name(self, screen_name: StrValue, namespace: Namespace) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -245,7 +308,7 @@ class FeslClient(Client):
         }
 
     def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         # Send query in chunks (using the same transaction id for all packets)
@@ -259,14 +322,14 @@ class FeslClient(Client):
 
     def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                         keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
         leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
         self.connection.write(leaderboard_packet)
 
-        payload = self.get_response(tid, parse_map=FeslParseMap.Stats)
+        payload = self.get_response(tid, parse_map=FeslParseMap.Leaderboard)
         # Turn sub lists into dicts and return result
         return [
             {
@@ -276,7 +339,7 @@ class FeslClient(Client):
         ]
 
     def get_dogtags(self, userid: IntValue) -> List[dict]:
-        if self.track_steps and FeslStep.login not in self.completed_steps:
+        if not self.completed_step(FeslStep.login):
             self.login()
 
         tid = self.get_transaction_id()
@@ -354,7 +417,7 @@ class FeslClient(Client):
         )
 
     @staticmethod
-    def build_login_packet(tid: int, username: StrValue, password: StrValue) -> FeslPacket:
+    def build_login_packet(tid: int, username: StrValue, password: StrValue, tos_version: Optional[StrValue] = None) -> FeslPacket:
         return FeslPacket.build(
             b'acct',
             Payload(
@@ -362,7 +425,8 @@ class FeslClient(Client):
                 returnEncryptedInfo=0,
                 name=username,
                 password=password,
-                macAddr='$000000000000'
+                macAddr='$000000000000',
+                tosVersion=tos_version
             ),
             FeslTransmissionType.SinglePacketRequest,
             tid
@@ -383,6 +447,33 @@ class FeslClient(Client):
             b'fsys',
             Payload(TXN='Ping'),
             FeslTransmissionType.SinglePacketResponse
+        )
+
+    @staticmethod
+    def build_tos_packet(tid: int) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct',
+            Payload(TXN='NuGetTos'),
+            FeslTransmissionType.SinglePacketRequest,
+            tid
+        )
+
+    @staticmethod
+    def build_get_personas_packet(tid: int) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct',
+            Payload(TXN='NuGetPersonas', namespace=''),
+            FeslTransmissionType.SinglePacketRequest,
+            tid
+        )
+
+    @staticmethod
+    def build_persona_login_packet(tid: int, persona_name: StrValue) -> FeslPacket:
+        return FeslPacket.build(
+            b'acct',
+            Payload(TXN='NuLoginPersona', name=persona_name),
+            FeslTransmissionType.SinglePacketRequest,
+            tid
         )
 
     @staticmethod
@@ -755,7 +846,8 @@ class TheaterClient(Client):
     def __init__(self, host: str, port: int, lkey: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
         connection = Connection(host, port, TheaterPacket)
-        super().__init__(connection, platform, BACKEND_DETAILS[platform]['clientString'], timeout, track_steps)
+        _, _, client_string = self.get_backend_details(Backend.official, platform)
+        super().__init__(connection, platform, client_string, timeout, track_steps)
         self.lkey = lkey
 
     def connect(self) -> bytes:
@@ -763,7 +855,7 @@ class TheaterClient(Client):
         Initialize the connection to the Theater backend by sending the initial CONN/hello packet
         :return: Response packet data
         """
-        if self.track_steps and TheaterStep.conn in self.completed_steps:
+        if self.completed_step(TheaterStep.conn):
             return bytes(self.completed_steps[TheaterStep.conn])
 
         tid = self.get_transaction_id()
@@ -780,9 +872,9 @@ class TheaterClient(Client):
         Authenticate against/log into the Theater backend using the lkey retrieved via FESL
         :return: Response packet data
         """
-        if self.track_steps and TheaterStep.user in self.completed_steps:
+        if self.completed_step(TheaterStep.user):
             return bytes(self.completed_steps[TheaterStep.user])
-        elif self.track_steps and TheaterStep.conn not in self.completed_steps:
+        elif not self.completed_step(TheaterStep.conn):
             self.connect()
 
         tid = self.get_transaction_id()
@@ -807,7 +899,7 @@ class TheaterClient(Client):
         Retrieve all available game (server) lobbies
         :return: List of lobby details
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()
@@ -835,7 +927,7 @@ class TheaterClient(Client):
         :param lobby_id: Id of the game server lobby
         :return: List of server details
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()
@@ -891,7 +983,7 @@ class TheaterClient(Client):
             b) id of user for which the current server should be returned (uid)
         :return: Tuple of (general server details, extended details, player list)
         """
-        if self.track_steps and TheaterStep.user not in self.completed_steps:
+        if not self.completed_step(TheaterStep.user):
             self.authenticate()
 
         tid = self.get_transaction_id()

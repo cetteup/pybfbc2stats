@@ -93,7 +93,13 @@ class Payload:
         return list(self.data.keys())
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[Union[PayloadValue, PayloadStruct]]:
-        return self.data.get(key, default)
+        value = self.data.get(key, default)
+
+        # Project Rome Theater returns any packet TID with a trailing \x00 byte, waiting for a fix on their end
+        if key == 'TID' and isinstance(value, bytes):
+            value = value.rstrip(b'\x00')
+
+        return value
 
     def get_str(self, key: str, default: Optional[str] = None) -> Optional[str]:
         value = self.get(key)
@@ -300,7 +306,8 @@ class Payload:
     def str_to_bool(value: str) -> bool:
         if value in ['1', 'YES']:
             return True
-        if value in ['0', 'NO']:
+        # Project Rome Theater returns the server PW as an empty field, waiting for fix/clarification
+        if value in ['0', 'NO', '']:
             return False
 
         # Raise error to adhere to behaviour of other parse methods

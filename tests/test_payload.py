@@ -202,7 +202,7 @@ class PayloadTest(unittest.TestCase):
     def test_from_bytes_list_parsed_bool(self):
         # GIVEN
         data = join_data([
-            b'bool.0=1', b'bool.1=0', b'bool.2=YES', b'bool.3=NO', b'bool.[]=4',
+            b'bool.0=1', b'bool.1=0', b'bool.2=YES', b'bool.3=NO', b'bool.4=', b'bool.[]=5',
         ])
         parse_map = {
             MagicParseKey.list: bool
@@ -212,7 +212,7 @@ class PayloadTest(unittest.TestCase):
         payload = Payload.from_bytes(data, parse_map)
 
         # THEN
-        self.assertEqual([True, False, True, False], payload.data.get('bool'))
+        self.assertEqual([True, False, True, False, False], payload.data.get('bool'))
 
     def test_from_bytes_list_parsed_nested(self):
         # GIVEN
@@ -325,7 +325,8 @@ class PayloadTest(unittest.TestCase):
     def test_from_bytes_map_parsed_bool(self):
         # GIVEN
         data = join_data([
-            b'bool.{a-key}=1', b'bool.{b-key}=0', b'bool.{c-key}=YES', b'bool.{d-key}=NO', b'bool.{}=4',
+            b'bool.{a-key}=1', b'bool.{b-key}=0', b'bool.{c-key}=YES', b'bool.{d-key}=NO', b'bool.{e-key}=',
+            b'bool.{}=5',
         ])
         parse_map = {
             MagicParseKey.map: bool
@@ -339,7 +340,8 @@ class PayloadTest(unittest.TestCase):
             'a-key': True,
             'b-key': False,
             'c-key': True,
-            'd-key': False
+            'd-key': False,
+            'e-key': False
         }, payload.data.get('bool'))
 
     def test_from_bytes_map_parsed_nested(self):
@@ -1346,3 +1348,13 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(19, payload.get_int('TID'))
         self.assertEqual('NO', payload.get_str('B-U-coralsea'))
         self.assertEqual(0, payload.get_int('AP'))
+
+    def test_tid_with_nil_byte(self):
+        # GIVEN
+        payload = Payload.from_bytes(b'TID=1\x00')
+
+        # WHEN
+        tid = payload.get_int('TID')
+
+        # THEN
+        self.assertEqual(1, tid)
