@@ -93,13 +93,7 @@ class Payload:
         return list(self.data.keys())
 
     def get(self, key: str, default: Optional[bytes] = None) -> Optional[Union[PayloadValue, PayloadStruct]]:
-        value = self.data.get(key, default)
-
-        # Project Rome Theater returns any packet TID with a trailing \x00 byte, waiting for a fix on their end
-        if key == 'TID' and isinstance(value, bytes):
-            value = value.rstrip(b'\x00')
-
-        return value
+        return self.data.get(key, default)
 
     def get_str(self, key: str, default: Optional[str] = None) -> Optional[str]:
         value = self.get(key)
