@@ -6,7 +6,7 @@ from .client import FeslClient, TheaterClient
 from .connection import Connection
 from .constants import Platform, Backend, FeslTransmissionType, FeslStep, LookupType, Namespace, STATS_KEYS, \
     DEFAULT_LEADERBOARD_KEYS
-from .exceptions import NotImplementedError
+from .exceptions import NotImplementedError, Error, ServerNotFoundError, PlayerNotFoundError, LobbyNotFoundError
 from .packet import FeslPacket
 from .payload import StrValue, Payload, IntValue
 
@@ -147,13 +147,74 @@ class RomeTheaterClient(TheaterClient):
     def __init__(self, host: str, port: int, lkey: StrValue, timeout: float = 3.0, track_steps: bool = True):
         super().__init__(host, port, lkey, Platform.pc, timeout, track_steps)
 
+    def get_servers(self, lobby_id: IntValue) -> List[dict]:
+        servers = super().get_servers(lobby_id)
+        is_error, error = self.is_glst_error_response(servers, lobby_id)
+        if is_error:
+            raise error
+
+        return servers
+
     def get_current_server(self, user_id: IntValue) -> Tuple[dict, dict, List[dict]]:
         raise NotImplementedError('Fetching the current server of players is not implemented on Project Rome')
+
+    def get_gdat(self, **kwargs: IntValue) -> Tuple[dict, dict, List[dict]]:
+        gdat, gdet, players = super().get_gdat(**kwargs)
+        is_error, error = self.is_gdat_error_response(gdat, **kwargs)
+        if is_error:
+            raise error
+
+        return gdat, gdet, players
+
+    @staticmethod
+    def is_glst_error_response(servers: List[dict], lobby_id: int) -> Tuple[bool, Optional[Error]]:
+        # Project Rome returns the same server list regardless of the given LID
+        # Since it sends a valid GLST packet and all GDAT packets, we need to check for errors after reading every packet
+        # If we just changed TheaterClient.is_error_response, we would leave unread garbage on the connection
+        for server in servers:
+            if server.get('LID') != lobby_id:
+                # Server LID does not match, mimic GLSTnrom
+                return True, LobbyNotFoundError('Theater returned lobby not found error')
+
+        return False, None
+
+    @staticmethod
+    def is_gdat_error_response(gdat: dict, **kwargs: IntValue) -> Tuple[bool, Optional[Error]]:
+        # Project Rome theater returns "empty" GDAT and GDET responses instead of an error response
+        # Since it sends both a "valid" GDAT and GDET packet, we need to check for errors after reading both
+        # If we just changed TheaterClient.is_error_response, we would leave unread garbage on the connection
+        if 'LID' not in gdat and 'LID' in kwargs:
+            # Server specified by LID (and GID) not found, mimic GDATngam behavior
+            return True, ServerNotFoundError('Theater returned server not found error')
+        elif 'LID' in kwargs and gdat.get('LID') != kwargs['LID']:
+            # Server found but LID does not match (Rome returns the same server list regardless of the given LID)
+            return True, ServerNotFoundError('Theater returned server not found error')
+        elif 'LID' not in gdat and 'UID' in kwargs:
+            # Server specified by UID not found, mimic GDATntfn behavior
+            return True, PlayerNotFoundError('Theater returned player not found/not online error')
+
+        return False, None
 
 
 class AsyncRomeTheaterClient(AsyncTheaterClient, RomeTheaterClient):
     def __init__(self, host: str, port: int, lkey: StrValue, timeout: float = 3.0, track_steps: bool = True):
         super().__init__(host, port, lkey, Platform.pc, timeout, track_steps)
 
+    async def get_servers(self, lobby_id: IntValue) -> List[dict]:
+        servers = await super().get_servers(lobby_id)
+        is_error, error = self.is_glst_error_response(servers, lobby_id)
+        if is_error:
+            raise error
+
+        return servers
+
     async def get_current_server(self, user_id: IntValue) -> Tuple[dict, dict, List[dict]]:
         raise NotImplementedError('Fetching the current server of players is not implemented on Project Rome')
+
+    async def get_gdat(self, **kwargs: IntValue) -> Tuple[dict, dict, List[dict]]:
+        gdat, gdet, players = await super().get_gdat(**kwargs)
+        is_error, error = self.is_gdat_error_response(gdat, **kwargs)
+        if is_error:
+            raise error
+
+        return gdat, gdet, players
