@@ -17,6 +17,7 @@ class AsyncClient(Client):
     read_task = Optional[asyncio.Task]
     read_error = Optional[Exception]
     queues: dict[int, asyncio.Queue]
+    setup_lock: asyncio.Lock
 
     def __init__(
             self,
@@ -30,6 +31,9 @@ class AsyncClient(Client):
         self.read_task = None
         self.read_error = None
         self.queues = {}
+        # Guards the setup steps (hello, login, ...), so parallel requests on a fresh client only perform each step once.
+        # The lock is not reentrant => never call another step (or anything that might) while holding it
+        self.setup_lock = asyncio.Lock()
 
     async def __aenter__(self):
         return self
@@ -139,74 +143,84 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         await self.connection.close()
 
     async def hello(self) -> bytes:
-        if self.completed_step(FeslStep.hello):
-            return bytes(self.completed_steps[FeslStep.hello])
+        async with self.setup_lock:
+            if self.completed_step(FeslStep.hello):
+                return bytes(self.completed_steps[FeslStep.hello])
 
-        async with self.transaction() as tid:
-            hello_packet = self.build_hello_packet(tid, self.client_string)
-            await self.connection.write(hello_packet)
+            async with self.transaction() as tid:
+                hello_packet = self.build_hello_packet(tid, self.client_string)
+                await self.connection.write(hello_packet)
 
-            # FESL sends hello response immediately followed by an initial memcheck, which the read loop responds to
-            response = await self.wrapped_read(tid)
+                # FESL sends hello response immediately followed by an initial memcheck, which the read loop responds to
+                response = await self.wrapped_read(tid)
 
-            self.completed_steps[FeslStep.hello] = response
+                self.completed_steps[FeslStep.hello] = response
 
-            return bytes(response)
+                return bytes(response)
 
     async def memcheck(self) -> None:
         memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
 
-    # TODO: Concurrent requests on a fresh client all see their setup steps (hello, login, login_persona) as not
-    #  completed and would each run them (e.g. several logins at once). Guard hello/login/login_persona (and the Theater
-    #  connect/authenticate steps) with an asyncio.Lock and re-check completed_step() once the lock is acquired, so
-    #  the steps are only ever performed once.
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
-        if self.completed_step(FeslStep.login):
-            return bytes(self.completed_steps[FeslStep.login])
-        elif not self.completed_step(FeslStep.hello):
+        if not self.completed_step(FeslStep.hello):
             await self.hello()
 
-        async with self.transaction() as tid:
-            login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
-            await self.connection.write(login_packet)
-            response = await self.wrapped_read(tid)
+        async with self.setup_lock:
+            if self.completed_step(FeslStep.login):
+                return bytes(self.completed_steps[FeslStep.login])
+
+            async with self.transaction() as tid:
+                login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
+                await self.connection.write(login_packet)
+                response = await self.wrapped_read(tid)
 
             response_valid, error_message, code = self.is_valid_login_response(response)
-            if not response_valid:
-                # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
-                if code == 260 and tos_version is None and (tos_version := await self.get_tos_version()) != bytes():
-                    return await self.login(tos_version)
-                raise AuthError(error_message)
+            if response_valid:
+                self.completed_steps[FeslStep.login] = response
+                return bytes(response)
 
-            self.completed_steps[FeslStep.login] = response
+        # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
+        # (done outside the lock, since fetching the TOS version may perform setup steps itself)
+        if code == 260 and tos_version is None and (tos_version := await self.get_tos_version()) != bytes():
+            return await self.login(tos_version)
 
-            return bytes(response)
+        raise AuthError(error_message)
 
     async def login_persona(self, persona_name: Optional[str] = None) -> bytes:
         if not self.completed_step(FeslStep.login):
             await self.login()
 
+        # Without an explicit persona, any already logged-in persona will do, so only log in if none is.
+        # An explicit persona is always logged in
+        use_any = persona_name is None
+        if use_any and self.completed_step(FeslStep.login_persona):
+            return bytes(self.completed_steps[FeslStep.login_persona])
+
         # Fetch and use first available persona if none was given
-        if persona_name is None:
+        if use_any:
             personas = await self.get_personas()
             if len(personas) < 1:
                 raise AuthError("No persona available for login")
 
             persona_name = personas[0]
 
-        async with self.transaction() as tid:
-            login_persona_packet = self.build_persona_login_packet(tid, persona_name)
-            await self.connection.write(login_persona_packet)
-            response = await self.wrapped_read(tid)
+        async with self.setup_lock:
+            if use_any and self.completed_step(FeslStep.login_persona):
+                return bytes(self.completed_steps[FeslStep.login_persona])
 
-            response_valid, error_message, _ = self.is_valid_login_response(response)
-            if not response_valid:
-                raise AuthError(error_message)
+            async with self.transaction() as tid:
+                login_persona_packet = self.build_persona_login_packet(tid, persona_name)
+                await self.connection.write(login_persona_packet)
+                response = await self.wrapped_read(tid)
 
-            self.completed_steps[FeslStep.login_persona] = response
+                response_valid, error_message, _ = self.is_valid_login_response(response)
+                if not response_valid:
+                    raise AuthError(error_message)
 
-            return bytes(response)
+                self.completed_steps[FeslStep.login_persona] = response
+
+                return bytes(response)
 
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
@@ -373,36 +387,39 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         self.lkey = lkey
 
     async def connect(self) -> bytes:
-        if self.completed_step(TheaterStep.conn):
-            return bytes(self.completed_steps[TheaterStep.conn])
+        async with self.setup_lock:
+            if self.completed_step(TheaterStep.conn):
+                return bytes(self.completed_steps[TheaterStep.conn])
 
-        async with self.transaction() as tid:
-            connect_packet = self.build_conn_packet(tid, self.client_string)
-            await self.connection.write(connect_packet)
+            async with self.transaction() as tid:
+                connect_packet = self.build_conn_packet(tid, self.client_string)
+                await self.connection.write(connect_packet)
 
-            response = await self.wrapped_read(tid)
-            self.completed_steps[TheaterStep.conn] = response
+                response = await self.wrapped_read(tid)
+                self.completed_steps[TheaterStep.conn] = response
 
-            return bytes(response)
+                return bytes(response)
 
     async def authenticate(self) -> bytes:
-        if self.completed_step(TheaterStep.user):
-            return bytes(self.completed_steps[TheaterStep.user])
-        elif not self.completed_step(TheaterStep.conn):
+        if not self.completed_step(TheaterStep.conn):
             await self.connect()
 
-        async with self.transaction() as tid:
-            auth_packet = self.build_user_packet(tid, self.lkey)
-            await self.connection.write(auth_packet)
+        async with self.setup_lock:
+            if self.completed_step(TheaterStep.user):
+                return bytes(self.completed_steps[TheaterStep.user])
 
-            response = await self.wrapped_read(tid)
+            async with self.transaction() as tid:
+                auth_packet = self.build_user_packet(tid, self.lkey)
+                await self.connection.write(auth_packet)
 
-            if not self.is_valid_authentication_response(response):
-                raise AuthError('Theater authentication failed')
+                response = await self.wrapped_read(tid)
 
-            self.completed_steps[TheaterStep.user] = response
+                if not self.is_valid_authentication_response(response):
+                    raise AuthError('Theater authentication failed')
 
-            return bytes(response)
+                self.completed_steps[TheaterStep.user] = response
+
+                return bytes(response)
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
