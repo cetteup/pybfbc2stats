@@ -351,9 +351,9 @@ class FeslClient(Client):
 
     def is_auto_respond_packet(self, packet: Packet) -> Tuple[bool, Optional[Callable]]:
         txn = packet.get_payload().get('TXN')
-        if txn == 'MemCheck':
+        if txn == b'MemCheck':
             return True, self.memcheck
-        elif txn == 'Ping':
+        elif txn == b'Ping':
             return True, self.ping
 
         return False, None
