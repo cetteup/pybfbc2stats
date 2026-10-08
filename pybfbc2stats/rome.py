@@ -86,7 +86,7 @@ class RomeFeslClient(FeslClient):
 class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
     connection: AsyncConnection
 
-    def __init__(self, username: str, password: str, timeout: float = 3.0, track_steps: bool = True):
+    def __init__(self, email: str, password: str, timeout: float = 3.0, track_steps: bool = True):
         host, port, client_string = self.get_backend_details(Backend.rome, Platform.pc)
         connection = AsyncConnection(host, port, FeslPacket, timeout)
         """
@@ -97,7 +97,7 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
         NexusFeslClient and FeslClient constructor
         """
         super(FeslClient, self).__init__(connection, Platform.pc, client_string, timeout, track_steps)
-        self.username = username.encode('utf8')
+        self.username = email.encode('utf8')
         self.password = password.encode('utf8')
 
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:

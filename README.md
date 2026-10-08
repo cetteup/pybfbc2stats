@@ -134,6 +134,15 @@ if __name__ == '__main__':
 
 Both the default and the async clients offer the same methods with the same signatures.
 
+Once connected, the clients read from the connection in the background (a thread for the default clients, a task for
+the async clients) and automatically respond to the backend's ping/memcheck packets. A client therefore stays connected
+while idle. Clients may also be used for multiple requests in parallel (from multiple threads/tasks), requests are
+matched to their responses using transaction ids. If the connection is lost, pending and subsequent requests fail
+with a `ConnectionError`.
+
+Advanced usage: if you replace a client's `connection` (e.g. to use a custom host), do so before making the first
+request. The connection must not be changed once the client has started reading from it.
+
 #### \[Async\]FeslClient(username, password, platform, timeout)
 
 Create a new [Async]FeslClient instance.

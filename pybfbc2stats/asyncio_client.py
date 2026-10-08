@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, List, Tuple, Optional, Union
+from typing import AsyncIterator, Dict, List, Tuple, Optional, Union
 
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
@@ -14,10 +14,12 @@ from .payload import Payload, StrValue, IntValue, ParseMap
 
 class AsyncClient(Client):
     connection: AsyncConnection
-    read_task = Optional[asyncio.Task]
-    read_error = Optional[Exception]
-    queues: dict[int, asyncio.Queue]
+
     setup_lock: asyncio.Lock
+
+    read_task: Optional[asyncio.Task]
+    read_error: Optional[Exception]
+    queues: Dict[int, asyncio.Queue]
 
     def __init__(
             self,
@@ -28,12 +30,14 @@ class AsyncClient(Client):
             track_steps: bool = True
     ):
         super().__init__(connection, platform, client_string, timeout, track_steps)
-        self.read_task = None
-        self.read_error = None
-        self.queues = {}
+
         # Guards the setup steps (hello, login, ...), so parallel requests on a fresh client only perform each step once.
         # The lock is not reentrant => never call another step (or anything that might) while holding it
         self.setup_lock = asyncio.Lock()
+
+        self.read_task = None
+        self.read_error = None
+        self.queues = {}
 
     async def __aenter__(self):
         return self
@@ -56,6 +60,9 @@ class AsyncClient(Client):
             self.queues.pop(tid, None)
 
     def start_read_loop(self) -> None:
+        """
+        Start reading from the connection in the background. The connection must not be replaced once started.
+        """
         if self.read_task is None:
             self.read_task = asyncio.create_task(self.read_loop())
 

@@ -12,6 +12,7 @@ from .packet import Packet
 
 class AsyncConnection(Connection):
     sock: socket.socket
+
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
     write_lock: asyncio.Lock

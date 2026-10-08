@@ -1,0 +1,213 @@
+import inspect
+import socket
+import threading
+import unittest
+from typing import Callable
+
+from pybfbc2stats import Platform, AsyncFeslClient, AsyncTheaterClient, FeslClient, TheaterClient, \
+    AsyncRomeFeslClient, RomeFeslClient, AsyncRomeTheaterClient, RomeTheaterClient, Connection
+from pybfbc2stats.constants import TheaterTransmissionType
+from pybfbc2stats.exceptions import ConnectionError
+from pybfbc2stats.packet import TheaterPacket
+from pybfbc2stats.payload import Payload
+
+
+class FakeServer:
+    def __init__(self, handler: Callable[[socket.socket], None]):
+        self.handler = handler
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(('127.0.0.1', 0))
+        self.sock.listen()
+        self.port = self.sock.getsockname()[1]
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+
+    def serve(self):
+        conn, _ = self.sock.accept()
+        with conn:
+            self.handler(conn)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *excinfo):
+        self.sock.close()
+        self.thread.join(5)
+
+
+def theater_packet(command: bytes, tid: int, **kwargs) -> bytes:
+    return bytes(TheaterPacket.build(command, Payload(TID=tid, **kwargs), TheaterTransmissionType.OKResponse, tid))
+
+
+class TheaterClientLoopTest(unittest.TestCase):
+    def test_responds_to_ping_while_idle(self):
+        # GIVEN
+        replies = []
+
+        def handler(conn: socket.socket):
+            conn.recv(4096)
+            conn.sendall(theater_packet(b'CONN', 1))
+            # Client is idle now, server pings it
+            conn.sendall(bytes(TheaterPacket.build(b'PING', Payload(), TheaterTransmissionType.Request, 0)))
+            replies.append(conn.recv(4096))
+            conn.recv(4096)
+
+        # WHEN
+        with FakeServer(handler) as server:
+            with TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc) as client:
+                client.connect()
+                server.thread.join(2)
+
+                # THEN
+                self.assertTrue(replies[0].startswith(b'PING'))
+
+    def test_parallel_transactions(self):
+        # GIVEN
+        def handler(conn: socket.socket):
+            # Respond to the second transaction first
+            conn.sendall(theater_packet(b'LDAT', 2) + theater_packet(b'LDAT', 1))
+            conn.recv(4096)
+
+        # WHEN
+        with FakeServer(handler) as server:
+            with TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc) as client:
+                client.connection.connect()
+                with client.transaction() as first, client.transaction() as second:
+                    packets = {}
+                    threads = [
+                        threading.Thread(target=lambda tid=tid: packets.update({tid: client.wrapped_read(tid)}))
+                        for tid in (first, second)
+                    ]
+                    for thread in threads:
+                        thread.start()
+                    for thread in threads:
+                        thread.join(5)
+
+                # THEN
+                self.assertEqual({1: 1, 2: 2}, {tid: packet.get_tid() for tid, packet in packets.items()})
+                self.assertEqual({}, client.queues)
+
+    def test_parallel_requests_perform_setup_steps_once(self):
+        # GIVEN
+        received = []
+
+        def handler(conn: socket.socket):
+            while data := conn.recv(4096):
+                command = data[:4]
+                received.append(command)
+                tid = len(received)
+                extra = {'NAME': 'some_persona'} if command == b'USER' else {}
+                conn.sendall(theater_packet(command, tid, **extra))
+
+        # WHEN
+        with FakeServer(handler) as server:
+            with TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc) as client:
+                threads = [threading.Thread(target=client.authenticate) for _ in range(5)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(5)
+
+        # THEN
+        self.assertEqual([b'CONN', b'USER'], received)
+
+    def test_connection_drop_fails_requests_and_exit_stops_reader(self):
+        # GIVEN
+        def handler(conn: socket.socket):
+            conn.recv(4096)
+            conn.sendall(theater_packet(b'CONN', 1))
+
+        # WHEN
+        with FakeServer(handler) as server:
+            client = TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc)
+            with client:
+                client.connect()
+                server.thread.join(2)
+                read_thread = client.read_thread
+                read_thread.join(2)
+
+                # THEN
+                with self.assertRaises(ConnectionError):
+                    with client.transaction() as tid:
+                        client.wrapped_read(tid)
+
+            self.assertIsNone(client.read_thread)
+            self.assertFalse(read_thread.is_alive())
+
+    def test_exit_stops_reader_of_healthy_connection(self):
+        # GIVEN
+        def handler(conn: socket.socket):
+            conn.recv(4096)
+            conn.sendall(theater_packet(b'CONN', 1))
+            conn.recv(4096)
+
+        # WHEN
+        with FakeServer(handler) as server:
+            client = TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc, timeout=2.0)
+            with client:
+                client.connect()
+                read_thread = client.read_thread
+
+            # THEN
+            self.assertFalse(read_thread.is_alive())
+
+
+class ConnectionWriteTest(unittest.TestCase):
+    def test_write_all_does_not_interleave(self):
+        # GIVEN
+        local, remote = socket.socketpair()
+        connection = Connection('127.0.0.1', 0, TheaterPacket)
+        connection.sock = local
+        connection.is_connected = True
+
+        def build(command: bytes, n: int):
+            return [TheaterPacket.build(command, Payload(N=i), TheaterTransmissionType.Request, n) for i in range(20)]
+
+        # WHEN
+        threads = [
+            threading.Thread(target=connection.write_all, args=(build(command, n),))
+            for command, n in ((b'AAAA', 1), (b'BBBB', 2), (b'CCCC', 3))
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(5)
+        local.close()
+        data = b''
+        while chunk := remote.recv(65536):
+            data += chunk
+        remote.close()
+
+        # THEN
+        commands = [data[i:i + 4] for i in range(len(data)) if data[i:i + 4] in (b'AAAA', b'BBBB', b'CCCC')]
+        # Collapse consecutive duplicates => every command must occur as exactly one uninterrupted run
+        runs = [command for i, command in enumerate(commands) if i == 0 or commands[i - 1] != command]
+        self.assertEqual(3, len(runs))
+
+
+class ClientParityTest(unittest.TestCase):
+    PAIRS = [
+        (FeslClient, AsyncFeslClient),
+        (TheaterClient, AsyncTheaterClient),
+        (RomeFeslClient, AsyncRomeFeslClient),
+        (RomeTheaterClient, AsyncRomeTheaterClient),
+    ]
+    EXCLUDED = {'__aenter__', '__aexit__', '__enter__', '__exit__'}
+
+    @staticmethod
+    def public_methods(cls) -> dict:
+        return {
+            name: list(inspect.signature(member).parameters.values())
+            for name, member in inspect.getmembers(cls, inspect.isfunction)
+            if (not name.startswith('_') or name.startswith('__')) and name not in ClientParityTest.EXCLUDED
+        }
+
+    def test_same_methods_and_signatures(self):
+        for sync_cls, async_cls in self.PAIRS:
+            with self.subTest(sync_cls.__name__):
+                sync_methods = self.public_methods(sync_cls)
+                async_methods = self.public_methods(async_cls)
+                # Context managers of the async client are async-only, everything else must exist on both
+                self.assertEqual(set(sync_methods) - {'__init__'}, set(async_methods) - {'__init__'})
+                for name, signature in sync_methods.items():
+                    self.assertEqual(signature, async_methods[name], name)
