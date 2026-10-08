@@ -173,10 +173,10 @@ class SecureConnection(Connection):
     @staticmethod
     def init_ssl_context():
         context = ssl.create_default_context()
-        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.minimum_version = ssl.TLSVersion.SSLv3
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
-        context.set_ciphers(':HIGH:!DH:!aNULL')
+        context.set_ciphers(':HIGH:!DH:!aNULL:RC4-SHA:RC4-MD5:@SECLEVEL=0')
 
         return context
 
