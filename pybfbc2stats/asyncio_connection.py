@@ -53,20 +53,20 @@ class AsyncConnection(Connection):
         Write packets back to back, without any other packets being written in between. Required for multi-packet
         transactions, since backends may not be able to handle packets of different transactions being interleaved.
         """
-        if not self.is_connected:
-            logger.debug('Socket is not connected yet, connecting now')
-            await self.connect()
+        async with self.write_lock:
+            if not self.is_connected:
+                logger.debug('Socket is not connected yet, connecting now')
+                await self.connect()
 
-        logger.debug('Writing to socket')
+            logger.debug('Writing to socket')
 
-        try:
-            async with self.write_lock:
+            try:
                 for packet in packets:
                     self.writer.write(bytes(packet))
                     await self.writer.drain()
                     logger.debug(packet)
-        except (socket.error, ConnectionResetError, RuntimeError) as e:
-            raise ConnectionError(f'Failed to send data to server ({e})') from None
+            except (socket.error, ConnectionResetError, RuntimeError) as e:
+                raise ConnectionError(f'Failed to send data to server ({e})') from None
 
     async def read(self, wait: bool = False) -> Packet:
         """

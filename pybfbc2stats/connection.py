@@ -62,6 +62,7 @@ class Connection:
         Write packets back to back, without any other packets being written in between. Required for multi-packet
         requests, since (at least some) backends cannot handle the packets of different requests being interleaved.
         """
+        # Connect while holding the lock, so parallel first writes cannot each establish their own connection
         with self.write_lock:
             if not self.is_connected:
                 logger.debug('Socket is not connected yet, connecting now')

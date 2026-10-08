@@ -100,3 +100,27 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
 
         server.close()
         await server.wait_closed()
+
+    async def test_parallel_first_writes_share_one_connection(self):
+        # GIVEN
+        accepted = []
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            accepted.append(writer)
+            await reader.read()
+            writer.close()
+
+        server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        port = server.sockets[0].getsockname()[1]
+        client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc)
+
+        # WHEN
+        async with client:
+            await asyncio.gather(*(client.ping() for _ in range(5)))
+            await asyncio.sleep(0.1)
+
+        # THEN
+        self.assertEqual(1, len(accepted))
+
+        server.close()
+        await server.wait_closed()
