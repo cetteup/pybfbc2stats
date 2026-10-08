@@ -225,6 +225,7 @@ class FeslClient(Client):
             self.logout()
         except (ConnectionError, TimeoutError):
             pass
+        self.stop_read_loop()
         self.connection.close()
 
     def hello(self) -> bytes:
