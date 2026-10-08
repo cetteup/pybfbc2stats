@@ -1,7 +1,7 @@
 import asyncio
 import socket
 import time
-from typing import Optional, Tuple, Type
+from typing import Optional, Sequence, Tuple, Type
 
 from .buffer import Buffer
 from .connection import Connection, SecureConnection
@@ -45,6 +45,13 @@ class AsyncConnection(Connection):
             raise ConnectionError(f'Failed to connect to {target} ({e})') from None
 
     async def write(self, packet: Packet) -> None:
+        await self.write_all([packet])
+
+    async def write_all(self, packets: Sequence[Packet]) -> None:
+        """
+        Write packets back to back, without any other packets being written in between. Required for multi-packet
+        transactions, since backends may not be able to handle packets of different transactions being interleaved.
+        """
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
@@ -53,12 +60,12 @@ class AsyncConnection(Connection):
 
         try:
             async with self.write_lock:
-                self.writer.write(bytes(packet))
-                await self.writer.drain()
+                for packet in packets:
+                    self.writer.write(bytes(packet))
+                    await self.writer.drain()
+                    logger.debug(packet)
         except (socket.error, ConnectionResetError, RuntimeError) as e:
             raise ConnectionError(f'Failed to send data to server ({e})') from None
-
-        logger.debug(packet)
 
     async def read(self, wait: bool = False) -> Packet:
         """

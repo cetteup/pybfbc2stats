@@ -314,13 +314,11 @@ class AsyncFeslClient(FeslClient, AsyncClient):
             await self.login()
 
         # Send query in chunks (using the same transaction id for all packets)
-        # TODO: The connection's write lock is only held per packet, so chunks of concurrent requests may be interleaved
-        #  on the wire. Test against the backend whether it handles that (chunks carry the transaction id). If it does
-        #  not, send all chunks of a request while holding the write lock.
         async with self.transaction() as tid:
             chunk_packets = self.build_stats_query_packets(tid, userid, keys)
-            for chunk_packet in chunk_packets:
-                await self.connection.write(chunk_packet)
+            # Backends may not be able to handle interleaved chunks of parallel requests
+            # => write all chunks back to back
+            await self.connection.write_all(chunk_packets)
 
             payload = await self.get_response(tid, parse_map=FeslParseMap.Stats)
             return self.dict_list_to_dict(payload.get_list('stats', list()))
