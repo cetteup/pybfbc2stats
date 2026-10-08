@@ -1,7 +1,7 @@
 import asyncio
 import socket
 import time
-from typing import Tuple, Type
+from typing import Optional, Tuple, Type
 
 from .buffer import Buffer
 from .connection import Connection, SecureConnection
@@ -14,9 +14,11 @@ class AsyncConnection(Connection):
     sock: socket.socket
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
+    write_lock: asyncio.Lock
 
     def __init__(self, host: str, port: int, packet_type: Type[Packet], timeout: float = 2.0):
         super().__init__(host, port, packet_type, timeout)
+        self.write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         if self.is_connected:
@@ -50,14 +52,19 @@ class AsyncConnection(Connection):
         logger.debug('Writing to socket')
 
         try:
-            self.writer.write(bytes(packet))
-            await self.writer.drain()
+            async with self.write_lock:
+                self.writer.write(bytes(packet))
+                await self.writer.drain()
         except (socket.error, ConnectionResetError, RuntimeError) as e:
             raise ConnectionError(f'Failed to send data to server ({e})') from None
 
         logger.debug(packet)
 
-    async def read(self) -> Packet:
+    async def read(self, wait: bool = False) -> Packet:
+        """
+        Read a single packet
+        :param wait: Wait indefinitely for the first bytes of the packet (timeout only applies once data is arriving)
+        """
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
@@ -68,7 +75,8 @@ class AsyncConnection(Connection):
         last_received = time.time()
         timed_out = False
         while (packet_buflen := packet.buflen()) > 0 and not timed_out:
-            iteration_buffer = await self.read_safe(packet_buflen)
+            idle = wait and len(packet.header) == 0
+            iteration_buffer = await self.read_safe(packet_buflen, None if idle else self.timeout)
 
             # Append whatever data is missing from the header to it
             if (header_buflen := packet.header_buflen()) > 0:
@@ -98,10 +106,15 @@ class AsyncConnection(Connection):
 
         return packet
 
-    async def read_safe(self, buflen: int) -> Buffer:
+    async def read_safe(self, buflen: int, timeout: Optional[float]) -> Buffer:
         future = self.reader.read(buflen)
         try:
-            return Buffer(await asyncio.wait_for(future, self.timeout))
+            data = await asyncio.wait_for(future, timeout)
+            if len(data) == 0:
+                # EOF, remote end closed the connection
+                self.is_connected = False
+                raise ConnectionError('Server closed the connection')
+            return Buffer(data)
         except (socket.timeout, asyncio.TimeoutError):
             raise TimeoutError('Timed out while receiving server data') from None
         except (socket.error, ConnectionResetError) as e:
