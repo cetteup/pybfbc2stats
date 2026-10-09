@@ -36,6 +36,7 @@ class Client:
     read_thread: Optional[threading.Thread]
     read_error: Optional[Exception]
     queues: Dict[int, queue.Queue]
+    queues_lock: threading.Lock
 
     def __init__(
             self,
@@ -67,6 +68,8 @@ class Client:
         self.read_thread = None
         self.read_error = None
         self.queues = {}
+        # Guards the queues dict, which is accessed by the reader thread as well as by threads running transactions
+        self.queues_lock = threading.Lock()
 
     def __enter__(self):
         return self
@@ -88,11 +91,13 @@ class Client:
         transactions may be pending at the same time. The queue is removed once the transaction is done (or failed).
         """
         tid = self.get_transaction_id()
-        self.queues[tid] = queue.Queue()
+        with self.queues_lock:
+            self.queues[tid] = queue.Queue()
         try:
             yield tid
         finally:
-            self.queues.pop(tid, None)
+            with self.queues_lock:
+                self.queues.pop(tid, None)
 
     def start_read_loop(self) -> None:
         """
@@ -114,7 +119,8 @@ class Client:
             if read_thread is not threading.current_thread():
                 read_thread.join(self.connection.timeout * 2)
         self.read_error = None
-        self.queues = {}
+        with self.queues_lock:
+            self.queues = {}
 
     def read_loop(self) -> None:
         """
@@ -132,15 +138,20 @@ class Client:
                     continue
 
                 tid = packet.get_tid()
-                if (packet_queue := self.queues.get(tid)) is not None:
+                with self.queues_lock:
+                    packet_queue = self.queues.get(tid)
+                if packet_queue is not None:
                     packet_queue.put(packet)
                 else:
                     logger.debug(f'Dropping packet that is not part of any current transaction (tid {tid})')
         except Exception as e:
             # Errors caused by deliberately stopping the loop (closed connection) are of no interest to anybody
             if not connection.stop_event.is_set():
+                # Set the error first, so transactions started after the queues were collected still see it
                 self.read_error = e
-                for packet_queue in list(self.queues.values()):
+                with self.queues_lock:
+                    packet_queues = list(self.queues.values())
+                for packet_queue in packet_queues:
                     packet_queue.put(e)
 
     def wrapped_read(self, tid: int) -> Packet:
@@ -149,7 +160,8 @@ class Client:
         by the read loop and never returned.
         :return: A packet containing "real" data
         """
-        packet_queue = self.queues.get(tid)
+        with self.queues_lock:
+            packet_queue = self.queues.get(tid)
         if packet_queue is None:
             raise ConnectionError(f'No active transaction with id {tid}')
 
