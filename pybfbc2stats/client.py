@@ -75,6 +75,9 @@ class Client:
         return self
 
     def __exit__(self, *excinfo):
+        self.close()
+
+    def close(self) -> None:
         self.stop_read_loop()
         self.connection.close()
 
@@ -232,13 +235,13 @@ class FeslClient(Client):
         self.username = username
         self.password = password
 
-    def __exit__(self, *excinfo):
+    def close(self) -> None:
         try:
             self.logout()
         except (ConnectionError, TimeoutError):
             pass
-        self.stop_read_loop()
-        self.connection.close()
+        finally:
+            super().close()
 
     def hello(self) -> bytes:
         with self.setup_lock:

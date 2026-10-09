@@ -43,8 +43,14 @@ class AsyncClient(Client):
         return self
 
     async def __aexit__(self, *excinfo):
-        await self.stop_read_loop()
-        await self.connection.close()
+        await self.close()
+
+    async def close(self) -> None:
+        # Always close the connection, even if stopping the read loop fails
+        try:
+            await self.stop_read_loop()
+        finally:
+            await self.connection.close()
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[int]:
@@ -70,10 +76,9 @@ class AsyncClient(Client):
         read_task, self.read_task = self.read_task, None
         if read_task is not None:
             read_task.cancel()
-            try:
-                await read_task
-            except asyncio.CancelledError:
-                pass
+            # Wait for the task to finish without raising its outcome (cancelled or failed), while still letting a
+            # cancellation of the caller propagate
+            await asyncio.gather(read_task, return_exceptions=True)
         self.read_error = None
         self.queues = {}
 
@@ -138,16 +143,13 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         self.username = username
         self.password = password
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *excinfo):
+    async def close(self) -> None:
         try:
             await self.logout()
         except (ConnectionError, TimeoutError):
             pass
-        await self.stop_read_loop()
-        await self.connection.close()
+        finally:
+            await super(FeslClient, self).close()
 
     async def hello(self) -> bytes:
         async with self.setup_lock:
