@@ -114,7 +114,7 @@ class AsyncConnection(Connection):
 
         return packet
 
-    async def read_safe(self, buflen: int, timeout: Optional[float]) -> Buffer:
+    async def read_safe(self, buflen: int, timeout: Optional[float] = None) -> Buffer:
         future = self.reader.read(buflen)
         try:
             data = await asyncio.wait_for(future, timeout)
