@@ -12,9 +12,33 @@ from pybfbc2stats.packet import TheaterPacket
 from pybfbc2stats.payload import Payload
 
 
+def run_in_threads(*targets: Callable[[], None]) -> None:
+    """Run targets in parallel threads, raising (in the calling test) any exception that occurred in a thread"""
+    errors = []
+
+    def wrap(target: Callable[[], None]) -> Callable[[], None]:
+        def run():
+            try:
+                target()
+            except BaseException as e:
+                errors.append(e)
+        return run
+
+    threads = [threading.Thread(target=wrap(target), daemon=True) for target in targets]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+        if thread.is_alive():
+            errors.append(AssertionError('Worker thread did not finish in time'))
+    if errors:
+        raise errors[0]
+
+
 class FakeServer:
     def __init__(self, handler: Callable[[socket.socket], None]):
         self.handler = handler
+        self.error = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind(('127.0.0.1', 0))
         self.sock.listen()
@@ -24,7 +48,10 @@ class FakeServer:
     def serve(self):
         conn, _ = self.sock.accept()
         with conn:
-            self.handler(conn)
+            try:
+                self.handler(conn)
+            except BaseException as e:
+                self.error = e
 
     def __enter__(self):
         self.thread.start()
@@ -33,6 +60,15 @@ class FakeServer:
     def __exit__(self, *excinfo):
         self.sock.close()
         self.thread.join(5)
+        # Only report handler errors if the test body itself did not already fail
+        if excinfo[0] is None:
+            self.assertion_check()
+
+    def assertion_check(self):
+        if self.error is not None:
+            raise AssertionError(f'Fake server handler failed: {self.error!r}') from self.error
+        if self.thread.is_alive():
+            raise AssertionError('Fake server handler did not finish in time')
 
 
 def theater_packet(command: bytes, tid: int, **kwargs) -> bytes:
@@ -74,14 +110,10 @@ class TheaterClientLoopTest(unittest.TestCase):
                 client.connection.connect()
                 with client.transaction() as first, client.transaction() as second:
                     packets = {}
-                    threads = [
-                        threading.Thread(target=lambda tid=tid: packets.update({tid: client.wrapped_read(tid)}))
-                        for tid in (first, second)
-                    ]
-                    for thread in threads:
-                        thread.start()
-                    for thread in threads:
-                        thread.join(5)
+                    run_in_threads(
+                        lambda: packets.update({first: client.wrapped_read(first)}),
+                        lambda: packets.update({second: client.wrapped_read(second)})
+                    )
 
                 # THEN
                 self.assertEqual({1: 1, 2: 2}, {tid: packet.get_tid() for tid, packet in packets.items()})
@@ -102,11 +134,7 @@ class TheaterClientLoopTest(unittest.TestCase):
         # WHEN
         with FakeServer(handler) as server:
             with TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc) as client:
-                threads = [threading.Thread(target=client.authenticate) for _ in range(5)]
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join(5)
+                run_in_threads(*(client.authenticate for _ in range(5)))
 
         # THEN
         self.assertEqual([b'CONN', b'USER'], received)
@@ -164,14 +192,10 @@ class ConnectionWriteTest(unittest.TestCase):
             return [TheaterPacket.build(command, Payload(N=i), TheaterTransmissionType.Request, n) for i in range(20)]
 
         # WHEN
-        threads = [
-            threading.Thread(target=connection.write_all, args=(build(command, n),))
+        run_in_threads(*(
+            (lambda packets=build(command, n): connection.write_all(packets))
             for command, n in ((b'AAAA', 1), (b'BBBB', 2), (b'CCCC', 3))
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(5)
+        ))
         local.close()
         data = b''
         while chunk := remote.recv(65536):
