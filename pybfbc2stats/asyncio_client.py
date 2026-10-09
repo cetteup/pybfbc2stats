@@ -168,6 +168,9 @@ class AsyncFeslClient(FeslClient, AsyncClient):
     async def memcheck(self) -> None:
         memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
+        # Explicitly start read loop in case memcheck is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
         if not self.completed_step(FeslStep.hello):
@@ -241,6 +244,9 @@ class AsyncFeslClient(FeslClient, AsyncClient):
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
+        # Explicitly start read loop in case ping is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def get_tos_version(self) -> bytes:
         if not self.completed_step(FeslStep.hello):
@@ -431,6 +437,9 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
+        # Explicitly start read loop in case ping is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def get_lobbies(self) -> List[dict]:
         if not self.completed_step(TheaterStep.user):
