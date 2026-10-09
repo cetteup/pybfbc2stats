@@ -67,13 +67,13 @@ class AsyncClient(Client):
             self.read_task = asyncio.create_task(self.read_loop())
 
     async def stop_read_loop(self) -> None:
-        if self.read_task is not None:
-            self.read_task.cancel()
+        read_task, self.read_task = self.read_task, None
+        if read_task is not None:
+            read_task.cancel()
             try:
-                await self.read_task
+                await read_task
             except asyncio.CancelledError:
                 pass
-            self.read_task = None
         self.read_error = None
         self.queues = {}
 
