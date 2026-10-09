@@ -34,7 +34,6 @@ class Client:
 
     read_lock: threading.Lock
     read_thread: Optional[threading.Thread]
-    read_error: Optional[Exception]
     queues: Dict[int, queue.Queue]
     queues_lock: threading.Lock
 
@@ -66,7 +65,6 @@ class Client:
 
         self.read_lock = threading.Lock()
         self.read_thread = None
-        self.read_error = None
         self.queues = {}
         # Guards the queues dict, which is accessed by the reader thread as well as by threads running transactions
         self.queues_lock = threading.Lock()
@@ -121,7 +119,6 @@ class Client:
             self.connection.close()
             if read_thread is not threading.current_thread():
                 read_thread.join(self.connection.timeout * 2)
-        self.read_error = None
         with self.queues_lock:
             self.queues = {}
 
@@ -150,12 +147,27 @@ class Client:
         except Exception as e:
             # Errors caused by deliberately stopping the loop (closed connection) are of no interest to anybody
             if not connection.stop_event.is_set():
-                # Set the error first, so transactions started after the queues were collected still see it
-                self.read_error = e
-                with self.queues_lock:
-                    packet_queues = list(self.queues.values())
-                for packet_queue in packet_queues:
-                    packet_queue.put(e)
+                self.handle_read_failure(e)
+
+    def handle_read_failure(self, error: Exception) -> None:
+        """
+        Clean up after the read loop failed, so the next request starts from a clean slate: Close the (unusable)
+        connection, so the next write reconnects, allow a new read loop to be started. Then fail all pending
+        transactions and forget the steps completed on the connection, so they are performed again on the next request.
+        """
+        # Close connection first, so transactions started from here on connect anew instead of using the dead one
+        self.connection.close()
+        with self.read_lock:
+            if self.read_thread is threading.current_thread():
+                self.read_thread = None
+        with self.queues_lock:
+            packet_queues = list(self.queues.values())
+        for packet_queue in packet_queues:
+            packet_queue.put(error)
+        # Setup steps hold the lock while waiting for their response, so only wait for it once the pending transactions
+        # have been failed. Holding it ensures a step that just completed is not recorded after the steps are cleared
+        with self.setup_lock:
+            self.completed_steps.clear()
 
     def wrapped_read(self, tid: int) -> Packet:
         """
@@ -169,8 +181,6 @@ class Client:
             raise ConnectionError(f'No active transaction with id {tid}')
 
         self.start_read_loop()
-        if self.read_error is not None and packet_queue.empty():
-            raise self.read_error
 
         try:
             item = packet_queue.get(timeout=self.connection.timeout)

@@ -6,7 +6,7 @@ from typing import Callable
 
 from pybfbc2stats import Platform, AsyncFeslClient, AsyncTheaterClient, FeslClient, TheaterClient, \
     AsyncRomeFeslClient, RomeFeslClient, AsyncRomeTheaterClient, RomeTheaterClient, Connection
-from pybfbc2stats.constants import TheaterTransmissionType
+from pybfbc2stats.constants import TheaterTransmissionType, TheaterStep
 from pybfbc2stats.exceptions import ConnectionError
 from pybfbc2stats.packet import TheaterPacket
 from pybfbc2stats.payload import Payload
@@ -36,8 +36,9 @@ def run_in_threads(*targets: Callable[[], None]) -> None:
 
 
 class FakeServer:
-    def __init__(self, handler: Callable[[socket.socket], None]):
+    def __init__(self, handler: Callable[[socket.socket], None], connections: int = 1):
         self.handler = handler
+        self.connections = connections
         self.error = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind(('127.0.0.1', 0))
@@ -46,12 +47,17 @@ class FakeServer:
         self.thread = threading.Thread(target=self.serve, daemon=True)
 
     def serve(self):
-        conn, _ = self.sock.accept()
-        with conn:
+        for _ in range(self.connections):
             try:
-                self.handler(conn)
-            except BaseException as e:
-                self.error = e
+                conn, _ = self.sock.accept()
+            except OSError:
+                # Listening socket was closed
+                return
+            with conn:
+                try:
+                    self.handler(conn)
+                except BaseException as e:
+                    self.error = e
 
     def __enter__(self):
         self.thread.start()
@@ -139,28 +145,32 @@ class TheaterClientLoopTest(unittest.TestCase):
         # THEN
         self.assertEqual([b'CONN', b'USER'], received)
 
-    def test_connection_drop_fails_requests_and_exit_stops_reader(self):
+    def test_connection_drop_fails_pending_requests_and_next_request_reconnects(self):
         # GIVEN
+        received = []
+
         def handler(conn: socket.socket):
+            data = conn.recv(4096)
+            received.append(data[:4])
+            if len(received) == 1:
+                # First connection: Close without responding
+                return
+            conn.sendall(theater_packet(data[:4], len(received)))
             conn.recv(4096)
-            conn.sendall(theater_packet(b'CONN', 1))
 
         # WHEN
-        with FakeServer(handler) as server:
-            client = TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc)
+        with FakeServer(handler, connections=2) as server:
+            client = TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc, timeout=2.0)
             with client:
-                client.connect()
-                server.thread.join(2)
-                read_thread = client.read_thread
-                read_thread.join(2)
-
                 # THEN
                 with self.assertRaises(ConnectionError):
-                    with client.transaction() as tid:
-                        client.wrapped_read(tid)
+                    client.connect()
+                self.assertEqual({}, client.completed_steps)
 
-            self.assertIsNone(client.read_thread)
-            self.assertFalse(read_thread.is_alive())
+                # Failure of the previous read loop is not held against the next request
+                client.connect()
+                self.assertEqual([b'CONN', b'CONN'], received)
+                self.assertTrue(client.completed_step(TheaterStep.conn))
 
     def test_exit_stops_reader_of_healthy_connection(self):
         # GIVEN

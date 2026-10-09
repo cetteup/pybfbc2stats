@@ -3,10 +3,14 @@ import unittest
 
 from pybfbc2stats import Platform
 from pybfbc2stats.asyncio_client import AsyncTheaterClient
-from pybfbc2stats.constants import TheaterTransmissionType
+from pybfbc2stats.constants import TheaterTransmissionType, TheaterStep
 from pybfbc2stats.exceptions import ConnectionError
 from pybfbc2stats.packet import TheaterPacket
 from pybfbc2stats.payload import Payload
+
+
+def theater_packet(command: bytes, tid: int) -> bytes:
+    return bytes(TheaterPacket.build(command, Payload(TID=tid), TheaterTransmissionType.OKResponse, tid))
 
 
 class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
@@ -39,10 +43,6 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
 
             # THEN
             self.assertTrue(replies[0].startswith(b'PING'))
-            # Closed connection is reported to subsequent requests
-            with self.assertRaises(ConnectionError):
-                async with client.transaction() as tid:
-                    await client.wrapped_read(tid)
 
 
     async def test_parallel_transactions(self):
@@ -124,3 +124,37 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
         # THEN
         self.assertEqual(1, len(accepted))
 
+
+    async def test_connection_drop_fails_pending_requests_and_next_request_reconnects(self):
+        # GIVEN
+        received = []
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            data = await reader.read(4096)
+            received.append(data[:4])
+            if len(received) == 1:
+                # First connection: Close without responding
+                writer.close()
+                return
+            writer.write(theater_packet(data[:4], len(received)))
+            await writer.drain()
+            await reader.read()
+            writer.close()
+
+        server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
+        port = server.sockets[0].getsockname()[1]
+        client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc, timeout=2.0)
+
+        # WHEN
+        async with client:
+            # THEN
+            with self.assertRaises(ConnectionError):
+                await client.connect()
+            self.assertEqual({}, client.completed_steps)
+
+            # Failure of the previous read loop is not held against the next request
+            await client.connect()
+            self.assertEqual([b'CONN', b'CONN'], received)
+            self.assertTrue(client.completed_step(TheaterStep.conn))

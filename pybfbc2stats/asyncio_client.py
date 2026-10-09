@@ -18,7 +18,6 @@ class AsyncClient(Client):
     setup_lock: asyncio.Lock
 
     read_task: Optional[asyncio.Task]
-    read_error: Optional[Exception]
     queues: Dict[int, asyncio.Queue]
 
     def __init__(
@@ -36,7 +35,6 @@ class AsyncClient(Client):
         self.setup_lock = asyncio.Lock()
 
         self.read_task = None
-        self.read_error = None
         self.queues = {}
 
     async def __aenter__(self):
@@ -86,7 +84,6 @@ class AsyncClient(Client):
             # Wait for the task to finish without raising its outcome (cancelled or failed), while still letting a
             # cancellation of the caller propagate
             await asyncio.gather(read_task, return_exceptions=True)
-        self.read_error = None
         self.queues = {}
 
     async def read_loop(self) -> None:
@@ -109,9 +106,23 @@ class AsyncClient(Client):
                 else:
                     logger.debug(f'Dropping packet that is not part of any current transaction (tid {tid})')
         except Exception as e:
-            self.read_error = e
-            for queue in self.queues.values():
-                queue.put_nowait(e)
+            await self.handle_read_failure(e)
+
+    async def handle_read_failure(self, error: Exception) -> None:
+        """
+        Clean up after the read loop failed, so the next request starts from a clean slate: Close the (unusable)
+        connection, so the next write reconnects, allow a new read loop to be started. Then fail all pending
+        transactions and forget the steps completed on the connection, so they are performed again on the next request.
+        """
+        await self.connection.close()
+        if self.read_task is asyncio.current_task():
+            self.read_task = None
+        for queue in self.queues.values():
+            queue.put_nowait(error)
+        # Setup steps hold the lock while waiting for their response, so only wait for it once the pending transactions
+        # have been failed. Holding it ensures a step that just completed is not recorded after the steps are cleared
+        async with self.setup_lock:
+            self.completed_steps.clear()
 
     async def wrapped_read(self, tid: int) -> Packet:
         queue = self.queues.get(tid)
@@ -119,8 +130,6 @@ class AsyncClient(Client):
             raise ConnectionError(f'No active transaction with id {tid}')
 
         self.start_read_loop()
-        if self.read_error is not None and queue.empty():
-            raise self.read_error
 
         try:
             item = await asyncio.wait_for(queue.get(), self.connection.timeout)
