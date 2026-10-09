@@ -27,6 +27,8 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             writer.close()
 
         server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
         port = server.sockets[0].getsockname()[1]
         client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc)
 
@@ -42,8 +44,6 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
                 async with client.transaction() as tid:
                     await client.wrapped_read(tid)
 
-        server.close()
-        await server.wait_closed()
 
     async def test_parallel_transactions(self):
         # GIVEN
@@ -57,6 +57,8 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             writer.close()
 
         server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
         port = server.sockets[0].getsockname()[1]
         client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc)
 
@@ -70,8 +72,6 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([1, 2], [packet.get_tid() for packet in packets])
             self.assertEqual({}, client.queues)
 
-        server.close()
-        await server.wait_closed()
 
     async def test_parallel_requests_perform_setup_steps_once(self):
         # GIVEN
@@ -88,6 +88,8 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             writer.close()
 
         server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
         port = server.sockets[0].getsockname()[1]
         client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc)
 
@@ -98,8 +100,6 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
         # THEN
         self.assertEqual([b'CONN', b'USER'], received)
 
-        server.close()
-        await server.wait_closed()
 
     async def test_parallel_first_writes_share_one_connection(self):
         # GIVEN
@@ -111,6 +111,8 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             writer.close()
 
         server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
         port = server.sockets[0].getsockname()[1]
         client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc)
 
@@ -122,5 +124,3 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
         # THEN
         self.assertEqual(1, len(accepted))
 
-        server.close()
-        await server.wait_closed()
