@@ -45,6 +45,13 @@ class AsyncClient(Client):
     async def __aexit__(self, *excinfo):
         await self.close()
 
+    def __enter__(self):
+        raise TypeError(f'{type(self).__name__} must be used with "async with"')
+
+    # Never reached, since __enter__ raises. It only shadows FeslClient.__exit__ in the MRO
+    def __exit__(self, *excinfo):
+        raise TypeError(f'{type(self).__name__} must be used with "async with"')
+
     async def close(self) -> None:
         # Always close the connection, even if stopping the read loop fails
         try:

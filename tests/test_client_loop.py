@@ -235,3 +235,10 @@ class ClientParityTest(unittest.TestCase):
                 self.assertEqual(set(sync_methods) - {'__init__'}, set(async_methods) - {'__init__'})
                 for name, signature in sync_methods.items():
                     self.assertEqual(signature, async_methods[name], name)
+
+    def test_async_clients_reject_sync_with(self):
+        for _, async_cls in ClientParityTest.PAIRS:
+            with self.subTest(async_cls.__name__):
+                with self.assertRaises(TypeError):
+                    with async_cls.__new__(async_cls):
+                        pass
