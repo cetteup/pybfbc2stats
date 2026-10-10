@@ -32,19 +32,18 @@ class RomeFeslClient(FeslClient):
     def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.completed_step(FeslStep.login) or self.completed_step(FeslStep.login_persona):
-            tid = self.get_transaction_id()
-            logout_packet = self.build_logout_packet(tid)
-            self.connection.write(logout_packet)
-            self.completed_steps.clear()
-            # Rome does not respond to logout packets, skip the read here
-            return
+            with self.transaction() as tid:
+                logout_packet = self.build_logout_packet(tid)
+                self.connection.write(logout_packet)
+                self.completed_steps.clear()
+                # Rome does not respond to logout packets, skip the read here
 
     def get_lkey(self) -> str:
         if not self.completed_step(FeslStep.login_persona):
             self.login_persona()
 
         # Use the lkey from the persona login instead of the account login
-        packet = self.completed_steps[FeslStep.login_persona]
+        packet = self.get_step(FeslStep.login_persona)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
@@ -86,7 +85,7 @@ class RomeFeslClient(FeslClient):
 class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
     connection: AsyncConnection
 
-    def __init__(self, username: str, password: str, timeout: float = 3.0, track_steps: bool = True):
+    def __init__(self, email: str, password: str, timeout: float = 3.0, track_steps: bool = True):
         host, port, client_string = self.get_backend_details(Backend.rome, Platform.pc)
         connection = AsyncConnection(host, port, FeslPacket, timeout)
         """
@@ -97,7 +96,7 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
         NexusFeslClient and FeslClient constructor
         """
         super(FeslClient, self).__init__(connection, Platform.pc, client_string, timeout, track_steps)
-        self.username = username.encode('utf8')
+        self.username = email.encode('utf8')
         self.password = password.encode('utf8')
 
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
@@ -108,19 +107,18 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.completed_step(FeslStep.login) or self.completed_step(FeslStep.login_persona):
-            tid = self.get_transaction_id()
-            logout_packet = self.build_logout_packet(tid)
-            await self.connection.write(logout_packet)
-            self.completed_steps.clear()
-            # Rome does not respond to logout packets, skip read here
-            return
+            async with self.transaction() as tid:
+                logout_packet = self.build_logout_packet(tid)
+                await self.connection.write(logout_packet)
+                self.completed_steps.clear()
+                # Rome does not respond to logout packets, skip read here
 
     async def get_lkey(self) -> str:
         if not self.completed_step(FeslStep.login_persona):
             await self.login_persona()
 
         # Use the lkey from the persona login instead of the account login
-        packet = self.completed_steps[FeslStep.login_persona]
+        packet = self.get_step(FeslStep.login_persona)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())

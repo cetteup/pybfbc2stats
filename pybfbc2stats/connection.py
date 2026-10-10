@@ -1,7 +1,8 @@
 import socket
 import ssl
+import threading
 import time
-from typing import Type
+from typing import Sequence, Tuple, Type, Set
 
 from .buffer import Buffer
 from .constants import DNS_OVERRIDES
@@ -14,15 +15,23 @@ class Connection:
     host: str
     port: int
     packet_type: Type[Packet]
-    sock: socket.socket
     timeout: float
+
+    sock: socket.socket
     is_connected: bool = False
+    # Number of times the connection has been established, allows telling apart data from before/after a reconnect
+    generation: int = 0
+
+    write_lock: threading.Lock
+    stop_event: threading.Event
 
     def __init__(self, host: str, port: int, packet_type: Type[Packet], timeout: float = 2.0):
         self.host = host
         self.port = port
         self.packet_type = packet_type
         self.timeout = timeout
+        self.write_lock = threading.Lock()
+        self.stop_event = threading.Event()
 
     def connect(self) -> None:
         if self.is_connected:
@@ -40,6 +49,7 @@ class Connection:
         try:
             self.sock.connect((address, self.port))
             self.is_connected = True
+            self.generation = (self.generation + 1) % 2**32
         except socket.timeout:
             self.is_connected = False
             raise TimeoutError(f'Connection attempt to {target} timed out') from None
@@ -48,20 +58,34 @@ class Connection:
             raise ConnectionError(f'Failed to connect to {target} ({e})') from None
 
     def write(self, packet: Packet) -> None:
-        if not self.is_connected:
-            logger.debug('Socket is not connected yet, connecting now')
-            self.connect()
+        self.write_all([packet])
 
-        logger.debug('Writing to socket')
+    def write_all(self, packets: Sequence[Packet]) -> None:
+        """
+        Write packets back to back, without any other packets being written in between. Required for multi-packet
+        requests, since (at least some) backends cannot handle the packets of different requests being interleaved.
+        """
+        # Connect while holding the lock, so parallel first writes cannot each establish their own connection
+        with self.write_lock:
+            if not self.is_connected:
+                logger.debug('Socket is not connected yet, connecting now')
+                self.connect()
 
-        try:
-            self.sock.sendall(bytes(packet))
-        except (socket.error, ConnectionResetError, RuntimeError) as e:
-            raise ConnectionError(f'Failed to send data to server ({e})') from None
+            logger.debug('Writing to socket')
 
-        logger.debug(packet)
+            try:
+                for packet in packets:
+                    self.sock.sendall(bytes(packet))
+                    logger.debug(packet)
+            except (socket.error, ConnectionResetError, RuntimeError) as e:
+                raise ConnectionError(f'Failed to send data to server ({e})') from None
 
-    def read(self) -> Packet:
+    def read(self, wait: bool = False) -> Tuple[int, Packet]:
+        """
+        Read a single packet
+        :param wait: Wait indefinitely for the first bytes of the packet (timeout only applies once data is arriving).
+        Waiting is cancelled by stop_event
+        """
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             self.connect()
@@ -69,14 +93,25 @@ class Connection:
         logger.debug('Reading from socket')
 
         packet = self.packet_type()
+        generations: Set[int] = set()
         last_received = time.time()
         timed_out = False
         while (packet_buflen := packet.buflen()) > 0 and not timed_out:
-            iteration_buffer = self.read_safe(packet_buflen)
+            try:
+                generation, buffer = self.read_safe(packet_buflen)
+            except TimeoutError:
+                # Idle connection (no data of the packet received yet), keep waiting unless told to stop
+                if wait and len(packet.header) == 0 and not self.stop_event.is_set():
+                    continue
+                raise
+
+            generations.add(generation)
+            if len(generations) > 1:
+                raise ConnectionError('Connection was re-established while reading packet')
 
             # Append whatever data is missing from the head to it
             if (header_buflen := packet.header_buflen()) > 0:
-                packet.header += iteration_buffer.read(min(header_buflen, iteration_buffer.length))
+                packet.header += buffer.read(min(header_buflen, buffer.length))
                 # Log packet header once complete
                 if packet.header_buflen() == 0:
                     logger.debug(f'Received header: {packet.header}')
@@ -85,10 +120,10 @@ class Connection:
                     packet.validate_header()
 
             # Append any remaining data to body
-            packet.body += iteration_buffer.remaining()
+            packet.body += buffer.remaining()
 
             # Update timestamp if any data was retrieved during current iteration
-            if iteration_buffer.length > 0:
+            if buffer.length > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
 
@@ -100,15 +135,23 @@ class Connection:
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
 
-        return packet
+        return generations.pop(), packet
 
-    def read_safe(self, buflen: int) -> Buffer:
+    def read_safe(self, buflen: int) -> Tuple[int, Buffer]:
+        generation = self.generation
         try:
-            return Buffer(self.sock.recv(buflen))
+            data = self.sock.recv(buflen)
         except socket.timeout:
             raise TimeoutError('Timed out while receiving server data') from None
         except (socket.error, ConnectionResetError) as e:
             raise ConnectionError(f'Failed to receive data from server ({e})') from None
+
+        if len(data) == 0:
+            # EOF, remote end closed the connection
+            self.is_connected = False
+            raise ConnectionError('Server closed the connection')
+
+        return generation, Buffer(data)
 
     def init_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

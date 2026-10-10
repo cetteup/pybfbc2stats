@@ -1,7 +1,7 @@
 import asyncio
 import socket
 import time
-from typing import Tuple, Type
+from typing import Optional, Sequence, Tuple, Type, Set
 
 from .buffer import Buffer
 from .connection import Connection, SecureConnection
@@ -12,11 +12,14 @@ from .packet import Packet
 
 class AsyncConnection(Connection):
     sock: socket.socket
+
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
+    write_lock: asyncio.Lock
 
     def __init__(self, host: str, port: int, packet_type: Type[Packet], timeout: float = 2.0):
         super().__init__(host, port, packet_type, timeout)
+        self.write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         if self.is_connected:
@@ -35,6 +38,7 @@ class AsyncConnection(Connection):
             self.sock.connect((address, self.port))
             self.reader, self.writer = await self.open_connection()
             self.is_connected = True
+            self.generation = (self.generation + 1) % 2**32
         except socket.timeout:
             self.is_connected = False
             raise TimeoutError(f'Connection attempt to {target} timed out') from None
@@ -43,21 +47,33 @@ class AsyncConnection(Connection):
             raise ConnectionError(f'Failed to connect to {target} ({e})') from None
 
     async def write(self, packet: Packet) -> None:
-        if not self.is_connected:
-            logger.debug('Socket is not connected yet, connecting now')
-            await self.connect()
+        await self.write_all([packet])
 
-        logger.debug('Writing to socket')
+    async def write_all(self, packets: Sequence[Packet]) -> None:
+        """
+        Write packets back to back, without any other packets being written in between. Required for multi-packet
+        transactions, since backends may not be able to handle packets of different transactions being interleaved.
+        """
+        async with self.write_lock:
+            if not self.is_connected:
+                logger.debug('Socket is not connected yet, connecting now')
+                await self.connect()
 
-        try:
-            self.writer.write(bytes(packet))
-            await self.writer.drain()
-        except (socket.error, ConnectionResetError, RuntimeError) as e:
-            raise ConnectionError(f'Failed to send data to server ({e})') from None
+            logger.debug('Writing to socket')
 
-        logger.debug(packet)
+            try:
+                for packet in packets:
+                    self.writer.write(bytes(packet))
+                    await self.writer.drain()
+                    logger.debug(packet)
+            except (socket.error, ConnectionResetError, RuntimeError) as e:
+                raise ConnectionError(f'Failed to send data to server ({e})') from None
 
-    async def read(self) -> Packet:
+    async def read(self, wait: bool = False) -> Tuple[int, Packet]:
+        """
+        Read a single packet
+        :param wait: Wait indefinitely for the first bytes of the packet (timeout only applies once data is arriving)
+        """
         if not self.is_connected:
             logger.debug('Socket is not connected yet, connecting now')
             await self.connect()
@@ -67,12 +83,18 @@ class AsyncConnection(Connection):
         packet = self.packet_type()
         last_received = time.time()
         timed_out = False
+        generations: Set[int] = set()
         while (packet_buflen := packet.buflen()) > 0 and not timed_out:
-            iteration_buffer = await self.read_safe(packet_buflen)
+            idle = wait and len(packet.header) == 0
+            generation, buffer = await self.read_safe(packet_buflen, None if idle else self.timeout)
+
+            generations.add(generation)
+            if len(generations) > 1:
+                raise ConnectionError('Connection was re-established while reading packet')
 
             # Append whatever data is missing from the header to it
             if (header_buflen := packet.header_buflen()) > 0:
-                packet.header += iteration_buffer.read(min(header_buflen, iteration_buffer.length))
+                packet.header += buffer.read(min(header_buflen, buffer.length))
                 # Log packet header once complete
                 if packet.header_buflen() == 0:
                     logger.debug(f'Received header: {packet.header}')
@@ -81,10 +103,10 @@ class AsyncConnection(Connection):
                     packet.validate_header()
 
             # Append any remaining data to body
-            packet.body += iteration_buffer.remaining()
+            packet.body += buffer.remaining()
 
             # Update timestamp if any data was retrieved during current iteration
-            if iteration_buffer.length > 0:
+            if buffer.length > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
 
@@ -96,16 +118,24 @@ class AsyncConnection(Connection):
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
 
-        return packet
+        return generations.pop(), packet
 
-    async def read_safe(self, buflen: int) -> Buffer:
+    async def read_safe(self, buflen: int, timeout: Optional[float] = None) -> Tuple[int, Buffer]:
+        generation = self.generation
         future = self.reader.read(buflen)
         try:
-            return Buffer(await asyncio.wait_for(future, self.timeout))
+            data = await asyncio.wait_for(future, timeout)
         except (socket.timeout, asyncio.TimeoutError):
             raise TimeoutError('Timed out while receiving server data') from None
         except (socket.error, ConnectionResetError) as e:
             raise ConnectionError(f'Failed to receive data from server ({e})') from None
+
+        if len(data) == 0:
+            # EOF, remote end closed the connection
+            self.is_connected = False
+            raise ConnectionError('Server closed the connection')
+
+        return generation, Buffer(data)
 
     async def open_connection(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         return await asyncio.open_connection(sock=self.sock)

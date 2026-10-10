@@ -1,16 +1,24 @@
-from typing import List, Tuple, Optional, Union
+import asyncio
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Dict, List, Tuple, Optional, Union
 
 from .asyncio_connection import AsyncSecureConnection, AsyncConnection
 from .client import Client, FeslClient, TheaterClient
 from .constants import FeslStep, Namespace, Platform, LookupType, DEFAULT_LEADERBOARD_KEYS, STATS_KEYS, \
     TheaterStep, ENCODING, FeslParseMap, TheaterParseMap, Backend
 from .exceptions import PlayerNotFoundError, AuthError, ConnectionError, TimeoutError
+from .logger import logger
 from .packet import Packet, FeslPacket, TheaterPacket
 from .payload import Payload, StrValue, IntValue, ParseMap
 
 
 class AsyncClient(Client):
     connection: AsyncConnection
+
+    setup_lock: asyncio.Lock
+
+    read_task: Optional[asyncio.Task]
+    queues: Dict[int, asyncio.Queue]
 
     def __init__(
             self,
@@ -22,29 +30,112 @@ class AsyncClient(Client):
     ):
         super().__init__(connection, platform, client_string, timeout, track_steps)
 
+        # Guards the setup steps (hello, login, ...), so parallel requests on a fresh client only perform each step once.
+        # The lock is not reentrant => never call another step (or anything that might) while holding it
+        self.setup_lock = asyncio.Lock()
+
+        self.read_task = None
+        self.queues = {}
+
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *excinfo):
+        await self.close()
+
+    def __enter__(self):
+        raise TypeError(f'{type(self).__name__} must be used with "async with"')
+
+    # Never reached, since __enter__ raises. It only shadows FeslClient.__exit__ in the MRO
+    def __exit__(self, *excinfo):
+        raise TypeError(f'{type(self).__name__} must be used with "async with"')
+
+    async def close(self) -> None:
+        # Always close the connection, even if stopping the read loop fails
+        try:
+            await self.stop_read_loop()
+        finally:
+            await self.connection.close()
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[int]:
+        """
+        Start a transaction, i.e. assign a transaction id and register a queue to receive the responses to it. Multiple
+        transactions may be pending at the same time. The queue is removed once the transaction is done (or failed).
+        """
+        tid = self.get_transaction_id()
+        self.queues[tid] = asyncio.Queue()
+        try:
+            yield tid
+        finally:
+            self.queues.pop(tid, None)
+
+    def start_read_loop(self) -> None:
+        """
+        Start reading from the connection in the background. The connection must not be replaced once started.
+        """
+        if self.read_task is None:
+            self.read_task = asyncio.create_task(self.read_loop())
+
+    async def stop_read_loop(self) -> None:
+        read_task, self.read_task = self.read_task, None
+        if read_task is not None:
+            read_task.cancel()
+            # Wait for the task to finish without raising its outcome (cancelled or failed), while still letting a
+            # cancellation of the caller propagate
+            await asyncio.gather(read_task, return_exceptions=True)
+        self.queues = {}
+
+    async def read_loop(self) -> None:
+        """
+        Continuously read packets, respond to those that require an immediate response (memcheck, ping) and hand all
+        others to the transaction waiting for them. This keeps the connection alive between requests.
+        """
+        try:
+            while True:
+                generation, packet = await self.connection.read(wait=True)
+
+                auto_respond, handler = self.is_auto_respond_packet(packet)
+                if auto_respond:
+                    await handler()
+                    continue
+
+                tid = packet.get_tid()
+                if tid in self.queues:
+                    self.queues[tid].put_nowait((generation, packet))
+                else:
+                    logger.debug(f'Dropping packet that is not part of any current transaction (tid {tid})')
+        except Exception as e:
+            await self.handle_read_failure(e)
+
+    async def handle_read_failure(self, error: Exception) -> None:
+        """
+        Clean up after the read loop failed, so the next request starts from a clean slate: Close the (unusable)
+        connection, so the next write reconnects, allow a new read loop to be started. Then fail all pending
+        transactions. Steps completed on the connection become invalid, since it is closed (see completed_step).
+        """
         await self.connection.close()
+        if self.read_task is asyncio.current_task():
+            self.read_task = None
+        for queue in self.queues.values():
+            queue.put_nowait(error)
 
-    async def wrapped_read(self, tid: int) -> Packet:
-        initial_packet = await self.connection.read()
+    async def wrapped_read(self, tid: int) -> Tuple[int, Packet]:
+        queue = self.queues.get(tid)
+        if queue is None:
+            raise ConnectionError(f'No active transaction with id {tid}')
 
-        # Check packet is not a "real" data packet but one that prompts a response (memcheck, ping)
-        auto_respond, handler = self.is_auto_respond_packet(initial_packet)
-        if auto_respond:
-            # Call auto respond handler
-            await handler()
-            # Call self to read another packet
-            data_packet = await self.wrapped_read(tid)
-        elif initial_packet.get_tid() < tid:
-            # Call self to read another packet if packet is not part of current transaction
-            data_packet = await self.wrapped_read(tid)
-        else:
-            data_packet = initial_packet
+        self.start_read_loop()
 
-        return data_packet
+        try:
+            item = await asyncio.wait_for(queue.get(), self.connection.timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError('Timed out while waiting for server response') from None
+
+        if isinstance(item, Exception):
+            raise item
+
+        return item
 
 
 class AsyncFeslClient(FeslClient, AsyncClient):
@@ -64,115 +155,130 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         self.username = username
         self.password = password
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *excinfo):
+    async def close(self) -> None:
         try:
             await self.logout()
         except (ConnectionError, TimeoutError):
             pass
-        await self.connection.close()
+        finally:
+            await super(FeslClient, self).close()
 
     async def hello(self) -> bytes:
-        if self.completed_step(FeslStep.hello):
-            return bytes(self.completed_steps[FeslStep.hello])
+        async with self.setup_lock:
+            if self.completed_step(FeslStep.hello):
+                return bytes(self.get_step(FeslStep.hello))
 
-        tid = self.get_transaction_id()
-        hello_packet = self.build_hello_packet(tid, self.client_string)
-        await self.connection.write(hello_packet)
+            async with self.transaction() as tid:
+                hello_packet = self.build_hello_packet(tid, self.client_string)
+                await self.connection.write(hello_packet)
 
-        # FESL sends hello response immediately followed initial memcheck => read both and return hello response
-        response = await self.connection.read()
-        _ = await self.connection.read()
+                # FESL sends hello response immediately followed by an initial memcheck, which the read loop responds to
+                generation, response = await self.wrapped_read(tid)
 
-        self.completed_steps[FeslStep.hello] = response
+                self.record_step(FeslStep.hello, generation, response)
 
-        # Reply to initial memcheck
-        await self.memcheck()
-
-        return bytes(response)
+                return bytes(response)
 
     async def memcheck(self) -> None:
         memcheck_packet = self.build_memcheck_packet()
         await self.connection.write(memcheck_packet)
+        # Explicitly start read loop in case memcheck is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def login(self, tos_version: Optional[StrValue] = None) -> bytes:
-        if self.completed_step(FeslStep.login):
-            return bytes(self.completed_steps[FeslStep.login])
-        elif not self.completed_step(FeslStep.hello):
+        if not self.completed_step(FeslStep.hello):
             await self.hello()
 
-        tid = self.get_transaction_id()
-        login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
-        await self.connection.write(login_packet)
-        response = await self.wrapped_read(tid)
+        async with self.setup_lock:
+            if self.completed_step(FeslStep.login):
+                return bytes(self.get_step(FeslStep.login))
 
-        response_valid, error_message, code = self.is_valid_login_response(response)
-        if not response_valid:
-            # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
-            if code == 260 and tos_version is None and (tos_version := await self.get_tos_version()) != bytes():
-                return await self.login(tos_version)
-            raise AuthError(error_message)
+            async with self.transaction() as tid:
+                login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
+                await self.connection.write(login_packet)
+                generation, response = await self.wrapped_read(tid)
 
-        self.completed_steps[FeslStep.login] = response
+            response_valid, error_message, code = self.is_valid_login_response(response)
+            if response_valid:
+                self.record_step(FeslStep.login, generation, response)
+                return bytes(response)
 
-        return bytes(response)
+        # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
+        # (done outside the lock, since fetching the TOS version may perform setup steps itself)
+        if code == 260 and tos_version is None and (tos_version := await self.get_tos_version()) != bytes():
+            return await self.login(tos_version)
+
+        raise AuthError(error_message)
 
     async def login_persona(self, persona_name: Optional[str] = None) -> bytes:
         if not self.completed_step(FeslStep.login):
             await self.login()
 
+        # Without an explicit persona, any already logged-in persona will do, so only log in if none is.
+        # An explicit persona is always logged in
+        use_any = persona_name is None
+        if use_any and self.completed_step(FeslStep.login_persona):
+            return bytes(self.get_step(FeslStep.login_persona))
+
         # Fetch and use first available persona if none was given
-        if persona_name is None:
+        if use_any:
             personas = await self.get_personas()
             if len(personas) < 1:
                 raise AuthError("No persona available for login")
 
             persona_name = personas[0]
 
-        tid = self.get_transaction_id()
-        login_persona_packet = self.build_persona_login_packet(tid, persona_name)
-        await self.connection.write(login_persona_packet)
-        response = await self.wrapped_read(tid)
+        async with self.setup_lock:
+            if use_any and self.completed_step(FeslStep.login_persona):
+                return bytes(self.get_step(FeslStep.login_persona))
 
-        response_valid, error_message, _ = self.is_valid_login_response(response)
-        if not response_valid:
-            raise AuthError(error_message)
+            async with self.transaction() as tid:
+                login_persona_packet = self.build_persona_login_packet(tid, persona_name)
+                await self.connection.write(login_persona_packet)
+                generation, response = await self.wrapped_read(tid)
 
-        self.completed_steps[FeslStep.login_persona] = response
+                response_valid, error_message, _ = self.is_valid_login_response(response)
+                if not response_valid:
+                    raise AuthError(error_message)
 
-        return bytes(response)
+                self.record_step(FeslStep.login_persona, generation, response)
+
+                return bytes(response)
 
     async def logout(self) -> Optional[bytes]:
         # Only send logout if client is currently logged in
         if self.completed_step(FeslStep.login):
-            tid = self.get_transaction_id()
-            logout_packet = self.build_logout_packet(tid)
-            await self.connection.write(logout_packet)
-            self.completed_steps.clear()
-            return bytes(await self.wrapped_read(tid))
+            async with self.transaction() as tid:
+                logout_packet = self.build_logout_packet(tid)
+                await self.connection.write(logout_packet)
+                self.completed_steps.clear()
+                _, response = await self.wrapped_read(tid)
+                return bytes(response)
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
+        # Explicitly start read loop in case ping is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def get_tos_version(self) -> bytes:
         if not self.completed_step(FeslStep.hello):
             await self.hello()
 
-        tid = self.get_transaction_id()
-        packet = self.build_tos_packet(tid)
-        await self.connection.write(packet)
-        response = await self.get_response(tid)
+        async with self.transaction() as tid:
+            packet = self.build_tos_packet(tid)
+            await self.connection.write(packet)
+            response = await self.get_response(tid)
 
-        return response.get('version', bytes())
+            return response.get('version', bytes())
 
     async def get_theater_details(self) -> Tuple[str, int]:
         if not self.completed_step(FeslStep.hello):
             await self.hello()
 
-        packet = self.completed_steps[FeslStep.hello]
+        packet = self.get_step(FeslStep.hello)
         payload = packet.get_payload()
 
         # Field is called "ip" but actually contains the hostname
@@ -182,7 +288,7 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        packet = self.completed_steps[FeslStep.login]
+        packet = self.get_step(FeslStep.login)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
@@ -191,13 +297,13 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        tid = self.get_transaction_id()
-        packet = self.build_get_personas_packet(tid)
-        await self.connection.write(packet)
+        async with self.transaction() as tid:
+            packet = self.build_get_personas_packet(tid)
+            await self.connection.write(packet)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.Personas)
-        personas = payload.get_list('personas', list())
-        return personas
+            payload = await self.get_response(tid, parse_map=FeslParseMap.Personas)
+            personas = payload.get_list('personas', list())
+            return personas
 
     async def lookup_usernames(self, usernames: List[StrValue], namespace: Namespace) -> List[dict]:
         return await self.lookup_user_identifiers(usernames, namespace, LookupType.byName)
@@ -216,12 +322,12 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        tid = self.get_transaction_id()
-        lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
-        await self.connection.write(lookup_packet)
+        async with self.transaction() as tid:
+            lookup_packet = self.build_user_lookup_packet(tid, identifiers, namespace, lookup_type)
+            await self.connection.write(lookup_packet)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.UserLookup)
-        return payload.get_list('userInfo', list())
+            payload = await self.get_response(tid, parse_map=FeslParseMap.UserLookup)
+            return payload.get_list('userInfo', list())
 
     async def lookup_user_identifier(self, identifier: Union[StrValue, IntValue], namespace: Namespace, lookup_type: LookupType) -> dict:
         results = await self.lookup_user_identifiers([identifier], namespace, lookup_type)
@@ -235,63 +341,64 @@ class AsyncFeslClient(FeslClient, AsyncClient):
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        tid = self.get_transaction_id()
-        search_packet = self.build_search_packet(tid, screen_name, namespace)
-        await self.connection.write(search_packet)
+        async with self.transaction() as tid:
+            search_packet = self.build_search_packet(tid, screen_name, namespace)
+            await self.connection.write(search_packet)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.NameSearch)
-        return {
-            'namespace': payload.get_str('nameSpaceId', str()),
-            'users': payload.get_list('users', list())
-        }
+            payload = await self.get_response(tid, parse_map=FeslParseMap.NameSearch)
+            return {
+                'namespace': payload.get_str('nameSpaceId', str()),
+                'users': payload.get_list('users', list())
+            }
 
     async def get_stats(self, userid: IntValue, keys: List[StrValue] = STATS_KEYS) -> dict:
         if not self.completed_step(FeslStep.login):
             await self.login()
 
         # Send query in chunks (using the same transaction id for all packets)
-        tid = self.get_transaction_id()
-        chunk_packets = self.build_stats_query_packets(tid, userid, keys)
-        for chunk_packet in chunk_packets:
-            await self.connection.write(chunk_packet)
+        async with self.transaction() as tid:
+            chunk_packets = self.build_stats_query_packets(tid, userid, keys)
+            # Backends may not be able to handle interleaved chunks of parallel requests
+            # => write all chunks back to back
+            await self.connection.write_all(chunk_packets)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.Stats)
-        return self.dict_list_to_dict(payload.get_list('stats', list()))
+            payload = await self.get_response(tid, parse_map=FeslParseMap.Stats)
+            return self.dict_list_to_dict(payload.get_list('stats', list()))
 
     async def get_leaderboard(self, min_rank: IntValue = 1, max_rank: IntValue = 50, sort_by: StrValue = 'score',
                               keys: List[StrValue] = DEFAULT_LEADERBOARD_KEYS) -> List[dict]:
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        tid = self.get_transaction_id()
-        leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
-        await self.connection.write(leaderboard_packet)
+        async with self.transaction() as tid:
+            leaderboard_packet = self.build_leaderboard_query_packet(tid, min_rank, max_rank, sort_by, keys)
+            await self.connection.write(leaderboard_packet)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.Leaderboard)
-        # Turn sub lists into dicts and return result
-        return [
-            {
-                key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
-                for (key, value) in entry.items()
-            } for entry in payload.get_list('stats', list())
-        ]
+            payload = await self.get_response(tid, parse_map=FeslParseMap.Leaderboard)
+            # Turn sub lists into dicts and return result
+            return [
+                {
+                    key: Client.dict_list_to_dict(value) if isinstance(value, list) else value
+                    for (key, value) in entry.items()
+                } for entry in payload.get_list('stats', list())
+            ]
 
     async def get_dogtags(self, userid: IntValue) -> List[dict]:
         if not self.completed_step(FeslStep.login):
             await self.login()
 
-        tid = self.get_transaction_id()
-        dogtags_packet = self.build_dogtag_query_packet(tid, userid)
-        await self.connection.write(dogtags_packet)
+        async with self.transaction() as tid:
+            dogtags_packet = self.build_dogtag_query_packet(tid, userid)
+            await self.connection.write(dogtags_packet)
 
-        payload = await self.get_response(tid, parse_map=FeslParseMap.Dogtags)
-        return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
+            payload = await self.get_response(tid, parse_map=FeslParseMap.Dogtags)
+            return self.format_dogtags_response(payload.get_map('values', dict()), self.platform)
 
     async def get_response(self, tid: int, parse_map: Optional[ParseMap] = None) -> Payload:
         response = bytes()
         last_packet = False
         while not last_packet:
-            packet = await self.wrapped_read(tid)
+            _, packet = await self.wrapped_read(tid)
             data, last_packet = self.process_response_packet(packet)
             response += data
 
@@ -308,94 +415,100 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         self.lkey = lkey
 
     async def connect(self) -> bytes:
-        if self.completed_step(TheaterStep.conn):
-            return bytes(self.completed_steps[TheaterStep.conn])
+        async with self.setup_lock:
+            if self.completed_step(TheaterStep.conn):
+                return bytes(self.get_step(TheaterStep.conn))
 
-        tid = self.get_transaction_id()
-        connect_packet = self.build_conn_packet(tid, self.client_string)
-        await self.connection.write(connect_packet)
+            async with self.transaction() as tid:
+                connect_packet = self.build_conn_packet(tid, self.client_string)
+                await self.connection.write(connect_packet)
 
-        response = await self.connection.read()
-        self.completed_steps[TheaterStep.conn] = response
+                generation, response = await self.wrapped_read(tid)
+                self.record_step(TheaterStep.conn, generation, response)
 
-        return bytes(response)
+                return bytes(response)
 
     async def authenticate(self) -> bytes:
-        if self.completed_step(TheaterStep.user):
-            return bytes(self.completed_steps[TheaterStep.user])
-        elif not self.completed_step(TheaterStep.conn):
+        if not self.completed_step(TheaterStep.conn):
             await self.connect()
 
-        tid = self.get_transaction_id()
-        auth_packet = self.build_user_packet(tid, self.lkey)
-        await self.connection.write(auth_packet)
+        async with self.setup_lock:
+            if self.completed_step(TheaterStep.user):
+                return bytes(self.get_step(TheaterStep.user))
 
-        response = await self.connection.read()
+            async with self.transaction() as tid:
+                auth_packet = self.build_user_packet(tid, self.lkey)
+                await self.connection.write(auth_packet)
 
-        if not self.is_valid_authentication_response(response):
-            raise AuthError('Theater authentication failed')
+                generation, response = await self.wrapped_read(tid)
 
-        self.completed_steps[TheaterStep.user] = response
+                if not self.is_valid_authentication_response(response):
+                    raise AuthError('Theater authentication failed')
 
-        return bytes(response)
+                self.record_step(TheaterStep.user, generation, response)
+
+                return bytes(response)
 
     async def ping(self) -> None:
         ping_packet = self.build_ping_packet()
         await self.connection.write(ping_packet)
+        # Explicitly start read loop in case ping is called before any method calling wrapped_read
+        # (e.g. hello), which would start the read loop automatically.
+        self.start_read_loop()
 
     async def get_lobbies(self) -> List[dict]:
         if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
-        tid = self.get_transaction_id()
-        lobby_list_packet = self.build_llst_packet(tid)
-        await self.connection.write(lobby_list_packet)
+        async with self.transaction() as tid:
+            lobby_list_packet = self.build_llst_packet(tid)
+            await self.connection.write(lobby_list_packet)
 
-        # Theater responds with an initial LLST packet, indicating the number of lobbies,
-        # followed by n LDAT packets with the lobby details
-        llst_response = await self.wrapped_read(tid)
-        llst = llst_response.get_payload()
-        num_lobbies = llst.get_int('NUM-LOBBIES', int())
+            # Theater responds with an initial LLST packet, indicating the number of lobbies,
+            # followed by n LDAT packets with the lobby details
+            _, llst_response = await self.wrapped_read(tid)
+            llst = llst_response.get_payload()
+            num_lobbies = llst.get_int('NUM-LOBBIES', int())
 
-        # Retrieve given number of lobbies (usually just one these days)
-        lobbies = []
-        for i in range(num_lobbies):
-            ldat_response = await self.wrapped_read(tid)
-            ldat = ldat_response.get_payload(TheaterParseMap.LDAT)
-            lobbies.append(dict(ldat))
+            # Retrieve given number of lobbies (usually just one these days)
+            lobbies = []
+            for i in range(num_lobbies):
+                _, ldat_response = await self.wrapped_read(tid)
+                ldat = ldat_response.get_payload(TheaterParseMap.LDAT)
+                lobbies.append(dict(ldat))
 
-        return lobbies
+            return lobbies
 
     async def get_servers(self, lobby_id: IntValue) -> List[dict]:
         if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
-        tid = self.get_transaction_id()
-        server_list_packet = self.build_glst_packet(tid, str(lobby_id).encode(ENCODING))
-        await self.connection.write(server_list_packet)
+        async with self.transaction() as tid:
+            server_list_packet = self.build_glst_packet(tid, str(lobby_id).encode(ENCODING))
+            await self.connection.write(server_list_packet)
 
-        # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
-        # in the lobby. It then sends one GDAT packet per game/server
-        glst_response = await self.wrapped_read(tid)
-        # Response may indicate an error if given lobby id does not exist
-        is_error, error = self.is_error_response(glst_response)
-        if is_error:
-            raise error
-        glst = glst_response.get_payload()
+            # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
+            # in the lobby. It then sends one GDAT packet per game/server
+            _, glst_response = await self.wrapped_read(tid)
+            # Response may indicate an error if given lobby id does not exist
+            is_error, error = self.is_error_response(glst_response)
+            if is_error:
+                raise error
+            glst = glst_response.get_payload()
 
-        # GLST contains LOBBY-NUM-GAMES (total number of games in lobby) and
-        # NUM-GAMES (number of games matching filters), so NUM-GAMES <= LOBBY-NUM-GAMES,
-        # => Use NUM-GAMES since Theater will only return GDAT packet for servers matching the filters
-        num_games = glst.get_int('NUM-GAMES', int())
+            # GLST contains LOBBY-NUM-GAMES (total number of games in lobby) and
+            # NUM-GAMES (number of games matching filters), so NUM-GAMES <= LOBBY-NUM-GAMES,
+            # => Use NUM-GAMES since Theater will only return GDAT packet for servers matching the filters
+            num_games = glst.get_int('NUM-GAMES', int())
 
-        # Retrieve GDAT for all servers
-        servers = []
-        for i in range(num_games):
-            gdat_response = await self.wrapped_read(tid)
-            gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
-            servers.append(dict(gdat))
+            # Retrieve GDAT for all servers
+            servers = []
+            for i in range(num_games):
+                _, gdat_response = await self.wrapped_read(tid)
+                gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
+                servers.append(dict(gdat))
 
-        return servers
+            return servers
 
     async def get_server_details(self, lobby_id: IntValue, game_id: IntValue) -> Tuple[dict, dict, List[dict]]:
         return await self.get_gdat(LID=lobby_id, GID=game_id)
@@ -407,31 +520,31 @@ class AsyncTheaterClient(TheaterClient, AsyncClient):
         if not self.completed_step(TheaterStep.user):
             await self.authenticate()
 
-        tid = self.get_transaction_id()
-        server_details_packet = self.build_gdat_packet(
-            tid,
-            **kwargs
-        )
-        await self.connection.write(server_details_packet)
+        async with self.transaction() as tid:
+            server_details_packet = self.build_gdat_packet(
+                tid,
+                **kwargs
+            )
+            await self.connection.write(server_details_packet)
 
-        # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
-        # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
-        gdat_response = await self.wrapped_read(tid)
-        # Response may indicate an error if given lobby id and /or game id do not exist
-        is_error, error = self.is_error_response(gdat_response)
-        if is_error:
-            raise error
-        gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
-        gdet_response = await self.wrapped_read(tid)
-        gdet = gdet_response.get_payload(TheaterParseMap.GDET)
+            # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
+            # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
+            _, gdat_response = await self.wrapped_read(tid)
+            # Response may indicate an error if given lobby id and /or game id do not exist
+            is_error, error = self.is_error_response(gdat_response)
+            if is_error:
+                raise error
+            gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
+            _, gdet_response = await self.wrapped_read(tid)
+            gdet = gdet_response.get_payload(TheaterParseMap.GDET)
 
-        # Determine number of active players (AP)
-        num_players = gdat.get_int('AP', int())
-        # Read PDAT packets for all players
-        players = []
-        for i in range(num_players):
-            pdat_response = await self.wrapped_read(tid)
-            pdat = pdat_response.get_payload(TheaterParseMap.PDAT)
-            players.append(dict(pdat))
+            # Determine number of active players (AP)
+            num_players = gdat.get_int('AP', int())
+            # Read PDAT packets for all players
+            players = []
+            for i in range(num_players):
+                _, pdat_response = await self.wrapped_read(tid)
+                pdat = pdat_response.get_payload(TheaterParseMap.PDAT)
+                players.append(dict(pdat))
 
-        return dict(gdat), dict(gdet), players
+            return dict(gdat), dict(gdet), players
