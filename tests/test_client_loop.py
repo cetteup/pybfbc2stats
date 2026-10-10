@@ -122,7 +122,7 @@ class TheaterClientLoopTest(unittest.TestCase):
                     )
 
                 # THEN
-                self.assertEqual({1: 1, 2: 2}, {tid: packet.get_tid() for tid, packet in packets.items()})
+                self.assertEqual({1: 1, 2: 2}, {tid: packet.get_tid() for tid, (_, packet) in packets.items()})
                 self.assertEqual({}, client.queues)
 
     def test_parallel_requests_perform_setup_steps_once(self):
@@ -165,9 +165,39 @@ class TheaterClientLoopTest(unittest.TestCase):
                 # THEN
                 with self.assertRaises(ConnectionError):
                     client.connect()
-                self.assertEqual({}, client.completed_steps)
 
                 # Failure of the previous read loop is not held against the next request
+                client.connect()
+                self.assertEqual([b'CONN', b'CONN'], received)
+                self.assertTrue(client.completed_step(TheaterStep.conn))
+
+    def test_steps_are_not_completed_after_connection_drop(self):
+        # GIVEN
+        received = []
+        close = threading.Event()
+
+        def handler(conn: socket.socket):
+            data = conn.recv(4096)
+            received.append(data[:4])
+            conn.sendall(theater_packet(data[:4], len(received)))
+            if len(received) == 1:
+                # First connection: Close once told to
+                close.wait(5)
+                return
+            conn.recv(4096)
+
+        # WHEN
+        with FakeServer(handler, connections=2) as server:
+            client = TheaterClient('127.0.0.1', server.port, 'lkey', Platform.pc, timeout=2.0)
+            with client:
+                client.connect()
+                self.assertTrue(client.completed_step(TheaterStep.conn))
+                read_thread = client.read_thread
+                close.set()
+                read_thread.join(2)
+
+                # THEN
+                self.assertFalse(client.completed_step(TheaterStep.conn))
                 client.connect()
                 self.assertEqual([b'CONN', b'CONN'], received)
                 self.assertTrue(client.completed_step(TheaterStep.conn))

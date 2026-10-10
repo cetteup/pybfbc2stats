@@ -2,7 +2,7 @@ import socket
 import ssl
 import threading
 import time
-from typing import Sequence, Type
+from typing import Sequence, Tuple, Type, Set
 
 from .buffer import Buffer
 from .constants import DNS_OVERRIDES
@@ -19,6 +19,8 @@ class Connection:
 
     sock: socket.socket
     is_connected: bool = False
+    # Number of times the connection has been established, allows telling apart data from before/after a reconnect
+    generation: int = 0
 
     write_lock: threading.Lock
     stop_event: threading.Event
@@ -47,6 +49,7 @@ class Connection:
         try:
             self.sock.connect((address, self.port))
             self.is_connected = True
+            self.generation = (self.generation + 1) % 2**32
         except socket.timeout:
             self.is_connected = False
             raise TimeoutError(f'Connection attempt to {target} timed out') from None
@@ -77,7 +80,7 @@ class Connection:
             except (socket.error, ConnectionResetError, RuntimeError) as e:
                 raise ConnectionError(f'Failed to send data to server ({e})') from None
 
-    def read(self, wait: bool = False) -> Packet:
+    def read(self, wait: bool = False) -> Tuple[int, Packet]:
         """
         Read a single packet
         :param wait: Wait indefinitely for the first bytes of the packet (timeout only applies once data is arriving).
@@ -90,20 +93,25 @@ class Connection:
         logger.debug('Reading from socket')
 
         packet = self.packet_type()
+        generations: Set[int] = set()
         last_received = time.time()
         timed_out = False
         while (packet_buflen := packet.buflen()) > 0 and not timed_out:
             try:
-                iteration_buffer = self.read_safe(packet_buflen)
+                generation, buffer = self.read_safe(packet_buflen)
             except TimeoutError:
                 # Idle connection (no data of the packet received yet), keep waiting unless told to stop
                 if wait and len(packet.header) == 0 and not self.stop_event.is_set():
                     continue
                 raise
 
+            generations.add(generation)
+            if len(generations) > 1:
+                raise ConnectionError('Connection was re-established while reading packet')
+
             # Append whatever data is missing from the head to it
             if (header_buflen := packet.header_buflen()) > 0:
-                packet.header += iteration_buffer.read(min(header_buflen, iteration_buffer.length))
+                packet.header += buffer.read(min(header_buflen, buffer.length))
                 # Log packet header once complete
                 if packet.header_buflen() == 0:
                     logger.debug(f'Received header: {packet.header}')
@@ -112,10 +120,10 @@ class Connection:
                     packet.validate_header()
 
             # Append any remaining data to body
-            packet.body += iteration_buffer.remaining()
+            packet.body += buffer.remaining()
 
             # Update timestamp if any data was retrieved during current iteration
-            if iteration_buffer.length > 0:
+            if buffer.length > 0:
                 last_received = time.time()
             timed_out = time.time() > last_received + self.timeout
 
@@ -127,9 +135,10 @@ class Connection:
         # Validate packet body (throws exception if invalid)
         packet.validate_body()
 
-        return packet
+        return generations.pop(), packet
 
-    def read_safe(self, buflen: int) -> Buffer:
+    def read_safe(self, buflen: int) -> Tuple[int, Buffer]:
+        generation = self.generation
         try:
             data = self.sock.recv(buflen)
         except socket.timeout:
@@ -142,7 +151,7 @@ class Connection:
             self.is_connected = False
             raise ConnectionError('Server closed the connection')
 
-        return Buffer(data)
+        return generation, Buffer(data)
 
     def init_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

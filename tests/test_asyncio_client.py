@@ -69,7 +69,7 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
                 packets = await asyncio.gather(client.wrapped_read(first), client.wrapped_read(second))
 
             # THEN
-            self.assertEqual([1, 2], [packet.get_tid() for packet in packets])
+            self.assertEqual([1, 2], [packet.get_tid() for _, packet in packets])
             self.assertEqual({}, client.queues)
 
 
@@ -152,9 +152,46 @@ class AsyncTheaterClientTest(unittest.IsolatedAsyncioTestCase):
             # THEN
             with self.assertRaises(ConnectionError):
                 await client.connect()
-            self.assertEqual({}, client.completed_steps)
 
             # Failure of the previous read loop is not held against the next request
+            await client.connect()
+            self.assertEqual([b'CONN', b'CONN'], received)
+            self.assertTrue(client.completed_step(TheaterStep.conn))
+
+    async def test_steps_are_not_completed_after_connection_drop(self):
+        # GIVEN
+        received = []
+        close = asyncio.Event()
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            data = await reader.read(4096)
+            received.append(data[:4])
+            writer.write(theater_packet(data[:4], len(received)))
+            await writer.drain()
+            if len(received) == 1:
+                # First connection: Close once told to
+                await close.wait()
+                writer.close()
+                return
+            await reader.read()
+            writer.close()
+
+        server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
+        port = server.sockets[0].getsockname()[1]
+        client = AsyncTheaterClient('127.0.0.1', port, 'lkey', Platform.pc, timeout=2.0)
+
+        # WHEN
+        async with client:
+            await client.connect()
+            self.assertTrue(client.completed_step(TheaterStep.conn))
+            read_task = client.read_task
+            close.set()
+            await asyncio.wait_for(read_task, 2)
+
+            # THEN
+            self.assertFalse(client.completed_step(TheaterStep.conn))
             await client.connect()
             self.assertEqual([b'CONN', b'CONN'], received)
             self.assertTrue(client.completed_step(TheaterStep.conn))

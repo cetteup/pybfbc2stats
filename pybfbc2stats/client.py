@@ -29,7 +29,7 @@ class Client:
     transaction_id: int
     transaction_lock: threading.Lock
 
-    completed_steps: Dict[Step, Packet]
+    completed_steps: Dict[Step, Tuple[int, Packet]]
     setup_lock: threading.Lock
 
     read_lock: threading.Lock
@@ -83,7 +83,18 @@ class Client:
         if not self.track_steps:
             return False
 
-        return step in self.completed_steps
+        # A step only counts as completed on the connection generation it was completed on. The session on the backend
+        # is gone with the old connection, so steps become invalid whenever the connection is re-established
+        completed = self.completed_steps.get(step)
+        return completed is not None \
+            and self.connection.is_connected \
+            and completed[0] == self.connection.generation
+
+    def record_step(self, step: Step, generation: int, packet: Packet) -> None:
+        self.completed_steps[step] = (generation, packet)
+
+    def get_step(self, step: Step) -> Packet:
+        return self.completed_steps[step][1]
 
     @contextmanager
     def transaction(self) -> Iterator[int]:
@@ -130,7 +141,7 @@ class Client:
         connection = self.connection
         try:
             while not connection.stop_event.is_set():
-                packet = connection.read(wait=True)
+                generation, packet = connection.read(wait=True)
 
                 auto_respond, handler = self.is_auto_respond_packet(packet)
                 if auto_respond:
@@ -141,7 +152,7 @@ class Client:
                 with self.queues_lock:
                     packet_queue = self.queues.get(tid)
                 if packet_queue is not None:
-                    packet_queue.put(packet)
+                    packet_queue.put((generation, packet))
                 else:
                     logger.debug(f'Dropping packet that is not part of any current transaction (tid {tid})')
         except Exception as e:
@@ -153,7 +164,7 @@ class Client:
         """
         Clean up after the read loop failed, so the next request starts from a clean slate: Close the (unusable)
         connection, so the next write reconnects, allow a new read loop to be started. Then fail all pending
-        transactions and forget the steps completed on the connection, so they are performed again on the next request.
+        transactions. Steps completed on the connection become invalid, since it is closed (see completed_step).
         """
         # Close connection first, so transactions started from here on connect anew instead of using the dead one
         self.connection.close()
@@ -164,16 +175,12 @@ class Client:
             packet_queues = list(self.queues.values())
         for packet_queue in packet_queues:
             packet_queue.put(error)
-        # Setup steps hold the lock while waiting for their response, so only wait for it once the pending transactions
-        # have been failed. Holding it ensures a step that just completed is not recorded after the steps are cleared
-        with self.setup_lock:
-            self.completed_steps.clear()
 
-    def wrapped_read(self, tid: int) -> Packet:
+    def wrapped_read(self, tid: int) -> Tuple[int, Packet]:
         """
         Wait for the next packet of the given transaction. Packets that prompt a response (memcheck, ping) are handled
         by the read loop and never returned.
-        :return: A packet containing "real" data
+        :return: Generation of the connection the packet was read from and a packet containing "real" data
         """
         with self.queues_lock:
             packet_queue = self.queues.get(tid)
@@ -235,7 +242,7 @@ class FeslClient(Client):
     username: StrValue
     password: StrValue
     connection: SecureConnection
-    completed_steps: Dict[FeslStep, Packet]
+    completed_steps: Dict[FeslStep, Tuple[int, Packet]]
 
     def __init__(self, username: StrValue, password: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
@@ -256,16 +263,16 @@ class FeslClient(Client):
     def hello(self) -> bytes:
         with self.setup_lock:
             if self.completed_step(FeslStep.hello):
-                return bytes(self.completed_steps[FeslStep.hello])
+                return bytes(self.get_step(FeslStep.hello))
 
             with self.transaction() as tid:
                 hello_packet = self.build_hello_packet(tid, self.client_string)
                 self.connection.write(hello_packet)
 
                 # FESL sends hello response immediately followed by an initial memcheck, which the read loop responds to
-                response = self.wrapped_read(tid)
+                generation, response = self.wrapped_read(tid)
 
-                self.completed_steps[FeslStep.hello] = response
+                self.record_step(FeslStep.hello, generation, response)
 
                 return bytes(response)
 
@@ -282,16 +289,16 @@ class FeslClient(Client):
 
         with self.setup_lock:
             if self.completed_step(FeslStep.login):
-                return bytes(self.completed_steps[FeslStep.login])
+                return bytes(self.get_step(FeslStep.login))
 
             with self.transaction() as tid:
                 login_packet = self.build_login_packet(tid, self.username, self.password, tos_version)
                 self.connection.write(login_packet)
-                response = self.wrapped_read(tid)
+                generation, response = self.wrapped_read(tid)
 
             response_valid, error_message, code = self.is_valid_login_response(response)
             if response_valid:
-                self.completed_steps[FeslStep.login] = response
+                self.record_step(FeslStep.login, generation, response)
                 return bytes(response)
 
         # If we received a "TOS Content is out of date" error, fetch current TOS version and try login one more time
@@ -309,7 +316,7 @@ class FeslClient(Client):
         # An explicit persona is always logged in
         use_any = persona_name is None
         if use_any and self.completed_step(FeslStep.login_persona):
-            return bytes(self.completed_steps[FeslStep.login_persona])
+            return bytes(self.get_step(FeslStep.login_persona))
 
         # Fetch and use first available persona if none was given
         if use_any:
@@ -321,18 +328,18 @@ class FeslClient(Client):
 
         with self.setup_lock:
             if use_any and self.completed_step(FeslStep.login_persona):
-                return bytes(self.completed_steps[FeslStep.login_persona])
+                return bytes(self.get_step(FeslStep.login_persona))
 
             with self.transaction() as tid:
                 login_persona_packet = self.build_persona_login_packet(tid, persona_name)
                 self.connection.write(login_persona_packet)
-                response = self.wrapped_read(tid)
+                generation, response = self.wrapped_read(tid)
 
                 response_valid, error_message, _ = self.is_valid_login_response(response)
                 if not response_valid:
                     raise AuthError(error_message)
 
-                self.completed_steps[FeslStep.login_persona] = response
+                self.record_step(FeslStep.login_persona, generation, response)
 
                 return bytes(response)
 
@@ -343,7 +350,8 @@ class FeslClient(Client):
                 logout_packet = self.build_logout_packet(tid)
                 self.connection.write(logout_packet)
                 self.completed_steps.clear()
-                return bytes(self.wrapped_read(tid))
+                _, response = self.wrapped_read(tid)
+                return bytes(response)
 
     def ping(self) -> None:
         ping_packet = self.build_ping_packet()
@@ -367,7 +375,7 @@ class FeslClient(Client):
         if not self.completed_step(FeslStep.hello):
             self.hello()
 
-        packet = self.completed_steps[FeslStep.hello]
+        packet = self.get_step(FeslStep.hello)
         payload = packet.get_payload()
 
         # Field is called "ip" but actually contains the hostname
@@ -377,7 +385,7 @@ class FeslClient(Client):
         if not self.completed_step(FeslStep.login):
             self.login()
 
-        packet = self.completed_steps[FeslStep.login]
+        packet = self.get_step(FeslStep.login)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
@@ -496,7 +504,7 @@ class FeslClient(Client):
         response = bytes()
         last_packet = False
         while not last_packet:
-            packet = self.wrapped_read(tid)
+            _, packet = self.wrapped_read(tid)
             data, last_packet = self.process_response_packet(packet)
             response += data
 
@@ -975,7 +983,7 @@ class FeslClient(Client):
 
 class TheaterClient(Client):
     lkey: StrValue
-    completed_steps: Dict[TheaterStep, Packet]
+    completed_steps: Dict[TheaterStep, Tuple[int, Packet]]
 
     def __init__(self, host: str, port: int, lkey: StrValue, platform: Platform, timeout: float = 3.0,
                  track_steps: bool = True):
@@ -987,14 +995,14 @@ class TheaterClient(Client):
     def connect(self) -> bytes:
         with self.setup_lock:
             if self.completed_step(TheaterStep.conn):
-                return bytes(self.completed_steps[TheaterStep.conn])
+                return bytes(self.get_step(TheaterStep.conn))
 
             with self.transaction() as tid:
                 connect_packet = self.build_conn_packet(tid, self.client_string)
                 self.connection.write(connect_packet)
 
-                response = self.wrapped_read(tid)
-                self.completed_steps[TheaterStep.conn] = response
+                generation, response = self.wrapped_read(tid)
+                self.record_step(TheaterStep.conn, generation, response)
 
                 return bytes(response)
 
@@ -1004,18 +1012,18 @@ class TheaterClient(Client):
 
         with self.setup_lock:
             if self.completed_step(TheaterStep.user):
-                return bytes(self.completed_steps[TheaterStep.user])
+                return bytes(self.get_step(TheaterStep.user))
 
             with self.transaction() as tid:
                 auth_packet = self.build_user_packet(tid, self.lkey)
                 self.connection.write(auth_packet)
 
-                response = self.wrapped_read(tid)
+                generation, response = self.wrapped_read(tid)
 
                 if not self.is_valid_authentication_response(response):
                     raise AuthError('Theater authentication failed')
 
-                self.completed_steps[TheaterStep.user] = response
+                self.record_step(TheaterStep.user, generation, response)
 
                 return bytes(response)
 
@@ -1040,14 +1048,14 @@ class TheaterClient(Client):
 
             # Theater responds with an initial LLST packet, indicating the number of lobbies,
             # followed by n LDAT packets with the lobby details
-            llst_response = self.wrapped_read(tid)
+            _, llst_response = self.wrapped_read(tid)
             llst = llst_response.get_payload()
             num_lobbies = llst.get_int('NUM-LOBBIES', int())
 
             # Retrieve given number of lobbies (usually just one these days)
             lobbies = []
             for i in range(num_lobbies):
-                ldat_response = self.wrapped_read(tid)
+                _, ldat_response = self.wrapped_read(tid)
                 ldat = ldat_response.get_payload(TheaterParseMap.LDAT)
                 lobbies.append(dict(ldat))
 
@@ -1068,7 +1076,7 @@ class TheaterClient(Client):
 
             # Again, same procedure: Theater first responds with a GLST packet which indicates the number of games/servers
             # in the lobby. It then sends one GDAT packet per game/server
-            glst_response = self.wrapped_read(tid)
+            _, glst_response = self.wrapped_read(tid)
             # Response may indicate an error if given lobby id does not exist
             is_error, error = self.is_error_response(glst_response)
             if is_error:
@@ -1083,7 +1091,7 @@ class TheaterClient(Client):
             # Retrieve GDAT for all servers
             servers = []
             for i in range(num_games):
-                gdat_response = self.wrapped_read(tid)
+                _, gdat_response = self.wrapped_read(tid)
                 gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
                 servers.append(dict(gdat))
 
@@ -1127,13 +1135,13 @@ class TheaterClient(Client):
 
             # Similar structure to before, but with one difference: Theater returns a GDAT packet (general game data),
             # followed by a GDET packet (extended server data). Finally, it sends a PDAT packet for every player
-            gdat_response = self.wrapped_read(tid)
+            _, gdat_response = self.wrapped_read(tid)
             # Response may indicate an error if given lobby id and /or game id do not exist
             is_error, error = self.is_error_response(gdat_response)
             if is_error:
                 raise error
             gdat = gdat_response.get_payload(TheaterParseMap.GDAT)
-            gdet_response = self.wrapped_read(tid)
+            _, gdet_response = self.wrapped_read(tid)
             gdet = gdet_response.get_payload(TheaterParseMap.GDET)
 
             # Determine number of active players (AP)
@@ -1141,7 +1149,7 @@ class TheaterClient(Client):
             # Read PDAT packets for all players
             players = []
             for i in range(num_players):
-                pdat_response = self.wrapped_read(tid)
+                _, pdat_response = self.wrapped_read(tid)
                 pdat = pdat_response.get_payload(TheaterParseMap.PDAT)
                 players.append(dict(pdat))
 

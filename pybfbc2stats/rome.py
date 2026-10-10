@@ -43,7 +43,7 @@ class RomeFeslClient(FeslClient):
             self.login_persona()
 
         # Use the lkey from the persona login instead of the account login
-        packet = self.completed_steps[FeslStep.login_persona]
+        packet = self.get_step(FeslStep.login_persona)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
@@ -118,7 +118,7 @@ class AsyncRomeFeslClient(AsyncFeslClient, RomeFeslClient):
             await self.login_persona()
 
         # Use the lkey from the persona login instead of the account login
-        packet = self.completed_steps[FeslStep.login_persona]
+        packet = self.get_step(FeslStep.login_persona)
         payload = packet.get_payload()
 
         return payload.get_str('lkey', str())
