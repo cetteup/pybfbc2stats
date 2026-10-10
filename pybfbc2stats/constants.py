@@ -230,7 +230,8 @@ DNS_OVERRIDES = {
     'bfbc2-360-server.theater.ea.com': '159.153.64.191',
     # 'bfbc2-ps3-server.fesl.ea.com': '159.153.64.125',
     # 'bfbc2-ps3-server.theater.ea.com': '159.153.64.150',
-
+    'fesl.ps3.arcadia': '152.53.15.83',
+    'theater.ps3.arcadia': '152.53.15.83',
 }
 DEFAULT_LEADERBOARD_KEYS = [b'deaths', b'kills', b'score', b'time']
 GENERAL_STATS_KEYS = [
